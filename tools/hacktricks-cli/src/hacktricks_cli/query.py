@@ -28,7 +28,7 @@ class Service:
 
 @lru_cache(maxsize=1)
 def _load_index() -> dict:
-    pkg = importlib.resources.files("pentest_cli")
+    pkg = importlib.resources.files("hacktricks_cli")
     data_file = pkg / "data" / "index.json"
     return json.loads(data_file.read_text())
 

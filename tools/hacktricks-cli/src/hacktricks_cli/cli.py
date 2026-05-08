@@ -16,14 +16,14 @@ from .query import index_meta, list_all, query_port, query_service
 @click.option("--info", is_flag=True, help="Show index metadata (version, source commit).")
 def main(query, category, show_list, plain, json_out, info):
     """
-    Pentest reference tool. Query by port number or service name.
+    HackTricks reference tool. Query by port number or service name.
 
     \b
     Examples:
-      pentest 445          # port lookup
-      pentest smb          # service lookup
-      pentest smb -c enum  # filter by category
-      pentest --list       # all known ports/services
+      hacktricks 445          # port lookup
+      hacktricks smb          # service lookup
+      hacktricks smb -c enum  # filter by category
+      hacktricks --list       # all known ports/services
     """
     if info:
         meta = index_meta()

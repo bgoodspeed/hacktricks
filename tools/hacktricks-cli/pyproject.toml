@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pentest-cli"
+name = "hacktricks-cli"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = ["click>=8.0", "rich>=13.0"]
 
 [project.scripts]
-pentest = "pentest_cli.cli:main"
+hacktricks = "hacktricks_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pentest_cli"]
+packages = ["src/hacktricks_cli"]
 
 [tool.hatch.build.targets.wheel.shared-data]
-"src/pentest_cli/data" = "pentest_cli/data"
+"src/hacktricks_cli/data" = "hacktricks_cli/data"
