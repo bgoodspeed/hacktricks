@@ -4,15 +4,9 @@ Major gaps:
       SQLi, XSS, SSRF, SSTI, XXE, file upload, deserialization, request smuggling, CORS, CSP bypass, etc. These are the most-queried topics in practice. You'd query hacktricks sqli or hacktricks xss and
        get payload cheatsheets + commands.
 
-  * Privilege escalation (src/linux-hardening/privilege-escalation/, src/windows-hardening/windows-local-privilege-escalation/)
-  These are the most-reached-for pages during a box. Commands to check SUIDs, writable paths, cron jobs, token abuse, etc. Natural queries: hacktricks privesc linux, hacktricks privesc windows.
+  * look into lolbas and gtfobins , add to this
 
-
-  * Cross-cutting post-exploitation techniques (src/generic-methodologies-and-resources/)
-      - exfiltration.md — how to get data out
-      - tunneling-and-port-forwarding.md — socat, chisel, ssh tunnels
-      - brute-force.md — wordlists, tool invocations by target type
-      - search-exploits.md — searchsploit, exploit-db patterns
+  * consider getting the info out of the security briefings thing too
 
   * Reverse shells — highly referenced, not in the index at all, there is a related repo, the one that backs revshells.com, we need a cli version of that, but it's separate
 

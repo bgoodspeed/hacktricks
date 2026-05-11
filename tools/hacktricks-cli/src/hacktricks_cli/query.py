@@ -41,6 +41,31 @@ class Technique:
     see_also: list[str] = field(default_factory=list)
 
 
+@dataclass
+class PostexTechnique:
+    slug: str
+    name: str
+    full_name: str
+    description: str
+    topic: str
+    platform: str
+    commands: list[Command] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    see_also: list[str] = field(default_factory=list)
+
+
+@dataclass
+class PrivescTechnique:
+    slug: str
+    name: str
+    full_name: str
+    description: str
+    platform: str  # "linux", "windows", or "both"
+    commands: list[Command] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    see_also: list[str] = field(default_factory=list)
+
+
 # ── Index loaders ──────────────────────────────────────────────────────────────
 
 @lru_cache(maxsize=1)
@@ -58,6 +83,26 @@ def _load_ad_index() -> dict:
         return json.loads(data_file.read_text())
     except Exception:
         return {"techniques": {}}
+
+
+@lru_cache(maxsize=1)
+def _load_postex_index() -> dict:
+    pkg = importlib.resources.files("hacktricks_cli")
+    data_file = pkg / "data" / "postex.json"
+    try:
+        return json.loads(data_file.read_text())
+    except Exception:
+        return {"techniques": {}, "topic_index": {}}
+
+
+@lru_cache(maxsize=1)
+def _load_privesc_index() -> dict:
+    pkg = importlib.resources.files("hacktricks_cli")
+    data_file = pkg / "data" / "privesc.json"
+    try:
+        return json.loads(data_file.read_text())
+    except Exception:
+        return {"techniques": {}, "platform_index": {}}
 
 
 # ── Parsers ────────────────────────────────────────────────────────────────────
@@ -79,6 +124,55 @@ def _parse_service(slug: str, raw: dict) -> Service:
         full_name=raw.get("full_name", raw.get("name", slug)),
         ports=raw.get("ports", []),
         description=raw.get("description", ""),
+        commands=commands,
+        aliases=raw.get("aliases", []),
+        see_also=raw.get("see_also", []),
+    )
+
+
+def _parse_privesc(slug: str, raw: dict) -> PrivescTechnique:
+    commands = [
+        Command(
+            name=c.get("name", ""),
+            category=c.get("category", "enumeration"),
+            command=c.get("command", ""),
+            note=c.get("note", ""),
+            platform=c.get("platform", "both"),
+        )
+        for c in raw.get("commands", [])
+        if c.get("command")
+    ]
+    return PrivescTechnique(
+        slug=slug,
+        name=raw.get("name", slug),
+        full_name=raw.get("full_name", raw.get("name", slug)),
+        description=raw.get("description", ""),
+        platform=raw.get("platform", "both"),
+        commands=commands,
+        aliases=raw.get("aliases", []),
+        see_also=raw.get("see_also", []),
+    )
+
+
+def _parse_postex(slug: str, raw: dict) -> PostexTechnique:
+    commands = [
+        Command(
+            name=c.get("name", ""),
+            category=c.get("category", "post-exploitation"),
+            command=c.get("command", ""),
+            note=c.get("note", ""),
+            platform=c.get("platform", "both"),
+        )
+        for c in raw.get("commands", [])
+        if c.get("command")
+    ]
+    return PostexTechnique(
+        slug=slug,
+        name=raw.get("name", slug),
+        full_name=raw.get("full_name", raw.get("name", slug)),
+        description=raw.get("description", ""),
+        topic=raw.get("topic", ""),
+        platform=raw.get("platform", "both"),
         commands=commands,
         aliases=raw.get("aliases", []),
         see_also=raw.get("see_also", []),
@@ -221,3 +315,167 @@ def list_all_techniques() -> list[Technique]:
         [_parse_technique(slug, raw) for slug, raw in index["techniques"].items()],
         key=lambda t: (_PHASE_ORDER.index(t.phase) if t.phase in _PHASE_ORDER else len(_PHASE_ORDER), t.name),
     )
+
+
+# ── Postex queries ─────────────────────────────────────────────────────────────
+
+POSTEX_TOPICS = ["exfiltration", "tunneling", "brute-force", "search-exploits"]
+
+_TOPIC_ALIASES: dict[str, str] = {
+    "exfil": "exfiltration",
+    "tunnel": "tunneling",
+    "port-forward": "tunneling",
+    "portforward": "tunneling",
+    "port-forwarding": "tunneling",
+    "brute": "brute-force",
+    "bruteforce": "brute-force",
+    "brute force": "brute-force",
+    "searchsploit": "search-exploits",
+    "exploit-db": "search-exploits",
+    "exploitdb": "search-exploits",
+    "search-exploit": "search-exploits",
+    "search exploits": "search-exploits",
+}
+
+
+def _resolve_topic(name: str) -> Optional[str]:
+    n = name.lower().strip()
+    if n in POSTEX_TOPICS:
+        return n
+    return _TOPIC_ALIASES.get(n)
+
+
+def query_postex(name: str) -> Optional[PostexTechnique]:
+    index = _load_postex_index()
+    name_lower = name.lower()
+
+    if name_lower in index["techniques"]:
+        return _parse_postex(name_lower, index["techniques"][name_lower])
+
+    candidates: dict[str, list[str]] = {}
+    for slug, raw in index["techniques"].items():
+        search_terms = [
+            slug,
+            raw.get("name", "").lower(),
+            raw.get("full_name", "").lower(),
+        ] + [a.lower() for a in raw.get("aliases", [])]
+        candidates[slug] = search_terms
+
+    for slug, terms in candidates.items():
+        if name_lower in terms:
+            return _parse_postex(slug, index["techniques"][slug])
+
+    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
+    term_strings = [t[0] for t in all_terms]
+    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
+    if close:
+        matched_term = close[0]
+        for term, slug in all_terms:
+            if term == matched_term:
+                return _parse_postex(slug, index["techniques"][slug])
+
+    return None
+
+
+def query_postex_topic(topic: str) -> list[PostexTechnique]:
+    index = _load_postex_index()
+    slugs = index.get("topic_index", {}).get(topic, [])
+    return [
+        _parse_postex(s, index["techniques"][s])
+        for s in slugs
+        if s in index["techniques"]
+    ]
+
+
+def list_all_postex() -> list[PostexTechnique]:
+    index = _load_postex_index()
+    return sorted(
+        [_parse_postex(slug, raw) for slug, raw in index["techniques"].items()],
+        key=lambda t: (t.topic, t.name),
+    )
+
+
+def postex_index_counts() -> dict[str, int]:
+    index = _load_postex_index()
+    topic_index = index.get("topic_index", {})
+    return {topic: len(slugs) for topic, slugs in topic_index.items()}
+
+
+# ── Privesc queries ────────────────────────────────────────────────────────────
+
+PRIVESC_PLATFORMS = ["linux", "windows"]
+
+_PLATFORM_ALIASES: dict[str, str] = {
+    "win": "windows",
+    "linux privesc": "linux",
+    "windows privesc": "windows",
+    "privesc linux": "linux",
+    "privesc windows": "windows",
+    "privesc win": "windows",
+    "lpe linux": "linux",
+    "lpe windows": "windows",
+    "lpe win": "windows",
+}
+
+
+def _resolve_privesc_platform(name: str) -> Optional[str]:
+    n = name.lower().strip()
+    if n in PRIVESC_PLATFORMS:
+        return n
+    return _PLATFORM_ALIASES.get(n)
+
+
+def query_privesc(name: str) -> Optional[PrivescTechnique]:
+    index = _load_privesc_index()
+    name_lower = name.lower()
+
+    if name_lower in index["techniques"]:
+        return _parse_privesc(name_lower, index["techniques"][name_lower])
+
+    candidates: dict[str, list[str]] = {}
+    for slug, raw in index["techniques"].items():
+        search_terms = [
+            slug,
+            raw.get("name", "").lower(),
+            raw.get("full_name", "").lower(),
+        ] + [a.lower() for a in raw.get("aliases", [])]
+        candidates[slug] = search_terms
+
+    for slug, terms in candidates.items():
+        if name_lower in terms:
+            return _parse_privesc(slug, index["techniques"][slug])
+
+    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
+    term_strings = [t[0] for t in all_terms]
+    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
+    if close:
+        matched_term = close[0]
+        for term, slug in all_terms:
+            if term == matched_term:
+                return _parse_privesc(slug, index["techniques"][slug])
+
+    return None
+
+
+def query_privesc_platform(platform: str) -> list[PrivescTechnique]:
+    index = _load_privesc_index()
+    slugs = index.get("platform_index", {}).get(platform, [])
+    return [
+        _parse_privesc(s, index["techniques"][s])
+        for s in slugs
+        if s in index["techniques"]
+    ]
+
+
+def list_all_privesc() -> list[PrivescTechnique]:
+    index = _load_privesc_index()
+    return sorted(
+        [_parse_privesc(slug, raw) for slug, raw in index["techniques"].items()],
+        key=lambda t: (t.platform, t.name),
+    )
+
+
+def privesc_index_counts() -> dict[str, int]:
+    index = _load_privesc_index()
+    platform_index = index.get("platform_index", {})
+    return {platform: len(slugs) for platform, slugs in platform_index.items()}

