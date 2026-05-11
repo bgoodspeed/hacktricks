@@ -8,7 +8,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.text import Text
 
-from .query import Service
+from .query import Service, Technique
 
 CATEGORY_ORDER = [
     "enumeration",
@@ -17,6 +17,7 @@ CATEGORY_ORDER = [
     "post-exploitation",
     "lateral-movement",
     "tunneling",
+    "persistence",
 ]
 
 CATEGORY_COLORS = {
@@ -26,6 +27,29 @@ CATEGORY_COLORS = {
     "post-exploitation": "magenta",
     "lateral-movement": "bright_magenta",
     "tunneling": "blue",
+    "persistence": "dark_orange",
+}
+
+PHASE_COLORS = {
+    "enumeration": "cyan",
+    "credential-access": "yellow",
+    "lateral-movement": "bright_magenta",
+    "privilege-escalation": "red",
+    "persistence": "dark_orange",
+}
+
+ACCESS_COLORS = {
+    "none": "green",
+    "domain-user": "cyan",
+    "local-admin": "yellow",
+    "domain-admin": "red",
+    "specific-permission": "magenta",
+}
+
+PLATFORM_COLORS = {
+    "linux": "green",
+    "windows": "blue",
+    "both": "dim",
 }
 
 
@@ -33,7 +57,7 @@ def _category_label(cat: str) -> str:
     return cat.upper().replace("-", " ")
 
 
-# ── Rich output ────────────────────────────────────────────────────────────────
+# ── Service: Rich output ───────────────────────────────────────────────────────
 
 def _rich_header(console: Console, services: list[Service], query: str):
     if query.isdigit():
@@ -60,6 +84,7 @@ def show_rich(
     services: list[Service],
     query: str,
     category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
 ):
     console = Console()
     _rich_header(console, services, query)
@@ -81,7 +106,6 @@ def show_rich(
             console.print("[dim]  No commands found.[/dim]\n")
             continue
 
-        # Group by category in canonical order
         by_cat: dict[str, list] = {}
         for cmd in commands:
             by_cat.setdefault(cmd.category, []).append(cmd)
@@ -109,12 +133,13 @@ def show_rich(
             console.print(f"[dim]SEE ALSO:[/dim]  {slugs}\n")
 
 
-# ── Plain text output ──────────────────────────────────────────────────────────
+# ── Service: Plain text output ─────────────────────────────────────────────────
 
 def show_plain(
     services: list[Service],
     query: str,
     category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
 ):
     lines = []
 
@@ -168,7 +193,7 @@ def show_plain(
     print("\n".join(lines))
 
 
-# ── JSON output ────────────────────────────────────────────────────────────────
+# ── Service: JSON output ───────────────────────────────────────────────────────
 
 def show_json(services: list[Service]):
     out = []
@@ -189,7 +214,7 @@ def show_json(services: list[Service]):
     print(json.dumps(out if len(out) > 1 else out[0] if out else {}, indent=2))
 
 
-# ── List output ────────────────────────────────────────────────────────────────
+# ── Service: List output ───────────────────────────────────────────────────────
 
 def show_list_rich(services: list[Service]):
     from rich.table import Table
@@ -211,3 +236,187 @@ def show_list_plain(services: list[Service]):
     for svc in services:
         ports_str = ", ".join(str(p) for p in svc.ports)
         print(f"{ports_str:<20} {svc.slug:<25} {svc.full_name}")
+
+
+# ── Technique: Rich output ─────────────────────────────────────────────────────
+
+def show_rich_technique(
+    technique: Technique,
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    console = Console()
+
+    phase_color = PHASE_COLORS.get(technique.phase, "white")
+    access_color = ACCESS_COLORS.get(technique.required_access, "white")
+
+    console.print(
+        f"\n[bold bright_green]{technique.name}[/bold bright_green]"
+        f"  [dim]({technique.full_name})[/dim]\n"
+    )
+
+    meta_parts = []
+    if technique.phase:
+        meta_parts.append(f"phase: [{phase_color}]{technique.phase}[/{phase_color}]")
+    if technique.required_access:
+        meta_parts.append(f"access: [{access_color}]{technique.required_access}[/{access_color}]")
+    if technique.mitre:
+        meta_parts.append(f"[dim]MITRE: {technique.mitre}[/dim]")
+    if meta_parts:
+        console.print("  " + "  |  ".join(meta_parts) + "\n")
+
+    if technique.description:
+        console.print(Panel(technique.description, border_style="dim", padding=(0, 1)))
+        console.print()
+
+    commands = technique.commands
+    if category_filter:
+        norm = category_filter.lower()
+        commands = [c for c in commands if norm in c.category]
+    if platform_filter and platform_filter != "both":
+        commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+    if not commands:
+        console.print("[dim]  No commands found.[/dim]\n")
+        return
+
+    by_cat: dict[str, list] = {}
+    for cmd in commands:
+        by_cat.setdefault(cmd.category, []).append(cmd)
+
+    idx = 1
+    ordered_cats = [c for c in CATEGORY_ORDER if c in by_cat]
+    ordered_cats += [c for c in by_cat if c not in CATEGORY_ORDER]
+
+    for cat in ordered_cats:
+        color = CATEGORY_COLORS.get(cat, "white")
+        console.print(Rule(f"[{color}]{_category_label(cat)}[/{color}]", style=f"dim {color}"))
+        for cmd in by_cat[cat]:
+            plat_color = PLATFORM_COLORS.get(cmd.platform, "dim")
+            plat_badge = f"[{plat_color}][{cmd.platform}][/{plat_color}]" if cmd.platform != "both" else ""
+            label = f"  [bold white]\\[{idx}][/bold white] [italic]{cmd.name}[/italic]"
+            if plat_badge:
+                label += f"  {plat_badge}"
+            console.print(label)
+            console.print(
+                Syntax(cmd.command, "bash", theme="monokai", word_wrap=True, indent_guides=False),
+                no_wrap=False,
+            )
+            if cmd.note:
+                console.print(f"  [dim]↳ {cmd.note}[/dim]")
+            console.print()
+            idx += 1
+
+    if technique.see_also:
+        slugs = "  ·  ".join(f"[cyan]{s}[/cyan]" for s in technique.see_also)
+        console.print(f"[dim]SEE ALSO:[/dim]  {slugs}\n")
+
+
+# ── Technique: Plain text output ───────────────────────────────────────────────
+
+def show_plain_technique(
+    technique: Technique,
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    lines = []
+    lines.append(f"{technique.name} ({technique.full_name})")
+    meta = []
+    if technique.phase:
+        meta.append(f"phase: {technique.phase}")
+    if technique.required_access:
+        meta.append(f"access: {technique.required_access}")
+    if technique.mitre:
+        meta.append(f"MITRE: {technique.mitre}")
+    if meta:
+        lines.append("  " + "  |  ".join(meta))
+    lines.append("")
+
+    if technique.description:
+        lines.append(technique.description)
+        lines.append("")
+
+    commands = technique.commands
+    if category_filter:
+        norm = category_filter.lower()
+        commands = [c for c in commands if norm in c.category]
+    if platform_filter and platform_filter != "both":
+        commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+    by_cat: dict[str, list] = {}
+    for cmd in commands:
+        by_cat.setdefault(cmd.category, []).append(cmd)
+
+    idx = 1
+    ordered_cats = [c for c in CATEGORY_ORDER if c in by_cat]
+    ordered_cats += [c for c in by_cat if c not in CATEGORY_ORDER]
+
+    for cat in ordered_cats:
+        lines.append(f"--- {_category_label(cat)} ---")
+        for cmd in by_cat[cat]:
+            plat = f" [{cmd.platform}]" if cmd.platform != "both" else ""
+            lines.append(f"[{idx}] {cmd.name}{plat}")
+            for line in cmd.command.splitlines():
+                lines.append(f"    {line}")
+            if cmd.note:
+                lines.append(f"    -> {cmd.note}")
+            lines.append("")
+            idx += 1
+
+    if technique.see_also:
+        lines.append(f"SEE ALSO: {' | '.join(technique.see_also)}")
+        lines.append("")
+
+    print("\n".join(lines))
+
+
+# ── Technique: JSON output ─────────────────────────────────────────────────────
+
+def show_json_technique(technique: Technique):
+    out = {
+        "slug": technique.slug,
+        "name": technique.name,
+        "full_name": technique.full_name,
+        "description": technique.description,
+        "phase": technique.phase,
+        "mitre": technique.mitre,
+        "required_access": technique.required_access,
+        "commands": [
+            {
+                "name": c.name,
+                "platform": c.platform,
+                "category": c.category,
+                "command": c.command,
+                "note": c.note,
+            }
+            for c in technique.commands
+        ],
+        "aliases": technique.aliases,
+        "see_also": technique.see_also,
+    }
+    print(json.dumps(out, indent=2))
+
+
+# ── Technique: List output ─────────────────────────────────────────────────────
+
+def show_list_rich_techniques(techniques: list[Technique]):
+    from rich.table import Table
+    console = Console()
+    table = Table(title="AD Attack Techniques", show_header=True, header_style="bold bright_green")
+    table.add_column("Slug", style="bold")
+    table.add_column("Name")
+    table.add_column("Phase", style="cyan")
+    table.add_column("Access", style="yellow")
+    table.add_column("MITRE", style="dim")
+    table.add_column("Cmds", justify="right", style="dim")
+
+    for t in techniques:
+        table.add_row(t.slug, t.full_name, t.phase, t.required_access, t.mitre, str(len(t.commands)))
+
+    console.print(table)
+
+
+def show_list_plain_techniques(techniques: list[Technique]):
+    for t in techniques:
+        mitre = f"  {t.mitre}" if t.mitre else ""
+        print(f"{t.slug:<35} {t.phase:<22} {t.required_access:<20}{mitre}")

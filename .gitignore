@@ -12,3 +12,4 @@ book/*
 hacktricks-preprocessor.log
 hacktricks-preprocessor-error.log
 searchindex.js
+__pycache__
