@@ -27,6 +27,7 @@ from .query import (
     query_postex, query_postex_topic, _resolve_topic, POSTEX_TOPICS,
     query_privesc, query_privesc_platform, _resolve_privesc_platform, PRIVESC_PLATFORMS,
     query_web, query_web_type, _resolve_web_type, WEB_VULN_TYPES,
+    suggest,
 )
 
 
@@ -395,5 +396,10 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
             show_rich_postex(pt, category, platform)
         return
 
-    click.echo(f"No service or technique found matching '{query}'.", err=True)
+    hints = suggest(query)
+    if hints:
+        hint_str = ", ".join(f"'{n}' ({k})" for n, k in hints)
+        click.echo(f"No match for '{query}'. Did you mean: {hint_str}?", err=True)
+    else:
+        click.echo(f"No match for '{query}'.", err=True)
     sys.exit(1)

@@ -1,6 +1,7 @@
 import difflib
 import importlib.resources
 import json
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Optional
@@ -84,6 +85,51 @@ class WebVulnTechnique:
     commands: list[Command] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
     see_also: list[str] = field(default_factory=list)
+
+
+# ── Matching helpers ───────────────────────────────────────────────────────────
+
+def _normalize(s: str) -> str:
+    """Collapse separators so 'active-directory' == 'activedirectory' == 'active directory'."""
+    return re.sub(r"[-_.\s]+", "", s).lower()
+
+
+def _find_slug(name: str, candidates: dict[str, list[str]]) -> Optional[str]:
+    """Return the best-matching slug from candidates, or None.
+
+    Tries in order: exact → normalized → fuzzy on original terms → fuzzy on normalized terms.
+    candidates maps slug → list of lowercase search terms.
+    """
+    name_lower = name.lower()
+    name_norm = _normalize(name)
+
+    for slug, terms in candidates.items():
+        if name_lower in terms:
+            return slug
+
+    for slug, terms in candidates.items():
+        if name_norm in (_normalize(t) for t in terms):
+            return slug
+
+    all_terms = [(t, slug) for slug, terms in candidates.items() for t in terms]
+    term_strings = [t for t, _ in all_terms]
+
+    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
+    if close:
+        for term, slug in all_terms:
+            if term == close[0]:
+                return slug
+
+    norm_map: dict[str, str] = {}
+    for t, slug in all_terms:
+        nt = _normalize(t)
+        if nt not in norm_map:
+            norm_map[nt] = slug
+    close_norm = difflib.get_close_matches(name_norm, list(norm_map), n=1, cutoff=0.6)
+    if close_norm:
+        return norm_map[close_norm[0]]
+
+    return None
 
 
 # ── Index loaders ──────────────────────────────────────────────────────────────
@@ -277,35 +323,19 @@ def query_port(port: int) -> list[Service]:
     return [_parse_service(s, index["services"][s]) for s in slugs if s in index["services"]]
 
 
+def _service_candidates(index: dict) -> dict[str, list[str]]:
+    return {
+        slug: [slug, raw.get("name", "").lower(), raw.get("full_name", "").lower()]
+              + [a.lower() for a in raw.get("aliases", [])]
+        for slug, raw in index["services"].items()
+    }
+
+
 def query_service(name: str) -> Optional[Service]:
     index = _load_index()
-    name_lower = name.lower()
-
-    if name_lower in index["services"]:
-        return _parse_service(name_lower, index["services"][name_lower])
-
-    candidates = {}
-    for slug, raw in index["services"].items():
-        search_terms = [
-            slug,
-            raw.get("name", "").lower(),
-            raw.get("full_name", "").lower(),
-        ] + [a.lower() for a in raw.get("aliases", [])]
-        candidates[slug] = search_terms
-
-    for slug, terms in candidates.items():
-        if name_lower in terms:
-            return _parse_service(slug, index["services"][slug])
-
-    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
-    term_strings = [t[0] for t in all_terms]
-    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
-    if close:
-        matched_term = close[0]
-        for term, slug in all_terms:
-            if term == matched_term:
-                return _parse_service(slug, index["services"][slug])
-
+    slug = _find_slug(name, _service_candidates(index))
+    if slug:
+        return _parse_service(slug, index["services"][slug])
     return None
 
 
@@ -341,35 +371,19 @@ _PHASE_ORDER = [
 ]
 
 
+def _technique_candidates(index: dict) -> dict[str, list[str]]:
+    return {
+        slug: [slug, raw.get("name", "").lower(), raw.get("full_name", "").lower()]
+              + [a.lower() for a in raw.get("aliases", [])]
+        for slug, raw in index["techniques"].items()
+    }
+
+
 def query_technique(name: str) -> Optional[Technique]:
     index = _load_ad_index()
-    name_lower = name.lower()
-
-    if name_lower in index["techniques"]:
-        return _parse_technique(name_lower, index["techniques"][name_lower])
-
-    candidates = {}
-    for slug, raw in index["techniques"].items():
-        search_terms = [
-            slug,
-            raw.get("name", "").lower(),
-            raw.get("full_name", "").lower(),
-        ] + [a.lower() for a in raw.get("aliases", [])]
-        candidates[slug] = search_terms
-
-    for slug, terms in candidates.items():
-        if name_lower in terms:
-            return _parse_technique(slug, index["techniques"][slug])
-
-    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
-    term_strings = [t[0] for t in all_terms]
-    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
-    if close:
-        matched_term = close[0]
-        for term, slug in all_terms:
-            if term == matched_term:
-                return _parse_technique(slug, index["techniques"][slug])
-
+    slug = _find_slug(name, _technique_candidates(index))
+    if slug:
+        return _parse_technique(slug, index["techniques"][slug])
     return None
 
 
@@ -409,35 +423,19 @@ def _resolve_topic(name: str) -> Optional[str]:
     return _TOPIC_ALIASES.get(n)
 
 
+def _postex_candidates(index: dict) -> dict[str, list[str]]:
+    return {
+        slug: [slug, raw.get("name", "").lower(), raw.get("full_name", "").lower()]
+              + [a.lower() for a in raw.get("aliases", [])]
+        for slug, raw in index["techniques"].items()
+    }
+
+
 def query_postex(name: str) -> Optional[PostexTechnique]:
     index = _load_postex_index()
-    name_lower = name.lower()
-
-    if name_lower in index["techniques"]:
-        return _parse_postex(name_lower, index["techniques"][name_lower])
-
-    candidates: dict[str, list[str]] = {}
-    for slug, raw in index["techniques"].items():
-        search_terms = [
-            slug,
-            raw.get("name", "").lower(),
-            raw.get("full_name", "").lower(),
-        ] + [a.lower() for a in raw.get("aliases", [])]
-        candidates[slug] = search_terms
-
-    for slug, terms in candidates.items():
-        if name_lower in terms:
-            return _parse_postex(slug, index["techniques"][slug])
-
-    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
-    term_strings = [t[0] for t in all_terms]
-    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
-    if close:
-        matched_term = close[0]
-        for term, slug in all_terms:
-            if term == matched_term:
-                return _parse_postex(slug, index["techniques"][slug])
-
+    slug = _find_slug(name, _postex_candidates(index))
+    if slug:
+        return _parse_postex(slug, index["techniques"][slug])
     return None
 
 
@@ -489,35 +487,19 @@ def _resolve_privesc_platform(name: str) -> Optional[str]:
     return _PLATFORM_ALIASES.get(n)
 
 
+def _privesc_candidates(index: dict) -> dict[str, list[str]]:
+    return {
+        slug: [slug, raw.get("name", "").lower(), raw.get("full_name", "").lower()]
+              + [a.lower() for a in raw.get("aliases", [])]
+        for slug, raw in index["techniques"].items()
+    }
+
+
 def query_privesc(name: str) -> Optional[PrivescTechnique]:
     index = _load_privesc_index()
-    name_lower = name.lower()
-
-    if name_lower in index["techniques"]:
-        return _parse_privesc(name_lower, index["techniques"][name_lower])
-
-    candidates: dict[str, list[str]] = {}
-    for slug, raw in index["techniques"].items():
-        search_terms = [
-            slug,
-            raw.get("name", "").lower(),
-            raw.get("full_name", "").lower(),
-        ] + [a.lower() for a in raw.get("aliases", [])]
-        candidates[slug] = search_terms
-
-    for slug, terms in candidates.items():
-        if name_lower in terms:
-            return _parse_privesc(slug, index["techniques"][slug])
-
-    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
-    term_strings = [t[0] for t in all_terms]
-    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
-    if close:
-        matched_term = close[0]
-        for term, slug in all_terms:
-            if term == matched_term:
-                return _parse_privesc(slug, index["techniques"][slug])
-
+    slug = _find_slug(name, _privesc_candidates(index))
+    if slug:
+        return _parse_privesc(slug, index["techniques"][slug])
     return None
 
 
@@ -599,35 +581,19 @@ def _resolve_web_type(name: str) -> Optional[str]:
     return _WEB_TYPE_ALIASES.get(n)
 
 
+def _web_candidates(index: dict) -> dict[str, list[str]]:
+    return {
+        slug: [slug, raw.get("name", "").lower(), raw.get("full_name", "").lower()]
+              + [a.lower() for a in raw.get("aliases", [])]
+        for slug, raw in index["techniques"].items()
+    }
+
+
 def query_web(name: str) -> Optional[WebVulnTechnique]:
     index = _load_web_index()
-    name_lower = name.lower()
-
-    if name_lower in index["techniques"]:
-        return _parse_web(name_lower, index["techniques"][name_lower])
-
-    candidates: dict[str, list[str]] = {}
-    for slug, raw in index["techniques"].items():
-        search_terms = [
-            slug,
-            raw.get("name", "").lower(),
-            raw.get("full_name", "").lower(),
-        ] + [a.lower() for a in raw.get("aliases", [])]
-        candidates[slug] = search_terms
-
-    for slug, terms in candidates.items():
-        if name_lower in terms:
-            return _parse_web(slug, index["techniques"][slug])
-
-    all_terms = [(term, slug) for slug, terms in candidates.items() for term in terms]
-    term_strings = [t[0] for t in all_terms]
-    close = difflib.get_close_matches(name_lower, term_strings, n=1, cutoff=0.6)
-    if close:
-        matched_term = close[0]
-        for term, slug in all_terms:
-            if term == matched_term:
-                return _parse_web(slug, index["techniques"][slug])
-
+    slug = _find_slug(name, _web_candidates(index))
+    if slug:
+        return _parse_web(slug, index["techniques"][slug])
     return None
 
 
@@ -653,3 +619,44 @@ def web_index_counts() -> dict[str, int]:
     index = _load_web_index()
     type_index = index.get("type_index", {})
     return {vtype: len(slugs) for vtype, slugs in type_index.items()}
+
+
+# ── Cross-index suggestions ────────────────────────────────────────────────────
+
+def suggest(query: str, n: int = 3) -> list[tuple[str, str]]:
+    """Return up to n (display_name, kind) pairs closest to query across all indexes.
+
+    Used to power "did you mean?" output when no exact or fuzzy match is found.
+    """
+    name_lower = query.lower()
+    name_norm = _normalize(query)
+
+    pools: list[tuple[dict[str, list[str]], dict, str, callable]] = [
+        (_service_candidates(_load_index()),   _load_index()["services"],          "service",    lambda s, r: r.get("name", s)),
+        (_technique_candidates(_load_ad_index()), _load_ad_index()["techniques"],  "ad",         lambda s, r: r.get("name", s)),
+        (_postex_candidates(_load_postex_index()), _load_postex_index()["techniques"], "postex", lambda s, r: r.get("name", s)),
+        (_privesc_candidates(_load_privesc_index()), _load_privesc_index()["techniques"], "privesc", lambda s, r: r.get("name", s)),
+        (_web_candidates(_load_web_index()),   _load_web_index()["techniques"],     "web",        lambda s, r: r.get("name", s)),
+    ]
+
+    scored: list[tuple[float, str, str]] = []
+    for candidates, raw_index, kind, display_fn in pools:
+        for slug, terms in candidates.items():
+            best = max(
+                max(difflib.SequenceMatcher(None, name_lower, t).ratio() for t in terms),
+                max(difflib.SequenceMatcher(None, name_norm, _normalize(t)).ratio() for t in terms),
+            )
+            if best >= 0.4:
+                scored.append((best, display_fn(slug, raw_index.get(slug, {})), kind))
+
+    scored.sort(reverse=True)
+    seen: set[str] = set()
+    results: list[tuple[str, str]] = []
+    for _, name, kind in scored:
+        key = f"{kind}:{name}"
+        if key not in seen:
+            seen.add(key)
+            results.append((name, kind))
+        if len(results) == n:
+            break
+    return results

@@ -1,9 +1,5 @@
 Major gaps:
 
-  * Web vulnerabilities (src/pentesting-web/ — 73 pages)
-      SQLi, XSS, SSRF, SSTI, XXE, file upload, deserialization, request smuggling, CORS, CSP bypass, etc. These are the most-queried topics in practice. You'd query hacktricks sqli or hacktricks xss and
-       get payload cheatsheets + commands.
-
   * look into lolbas and gtfobins , add to this
 
   * consider getting the info out of the security briefings thing too
