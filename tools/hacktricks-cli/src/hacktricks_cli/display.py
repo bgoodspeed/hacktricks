@@ -8,7 +8,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.text import Text
 
-from .query import PostexTechnique, PrivescTechnique, Service, Technique
+from .query import PostexTechnique, PrivescTechnique, Service, Technique, WebVulnTechnique
 
 CATEGORY_ORDER = [
     "enumeration",
@@ -987,3 +987,347 @@ def show_list_rich_privesc(techniques: list[PrivescTechnique]):
 def show_list_plain_privesc(techniques: list[PrivescTechnique]):
     for t in techniques:
         print(f"{t.slug:<35} {t.platform:<10} {t.name}")
+
+
+# ── WebVulnTechnique: colors ───────────────────────────────────────────────────
+
+WEB_TYPE_COLORS = {
+    "injection": "red",
+    "xss": "yellow",
+    "xxe": "magenta",
+    "ssrf": "cyan",
+    "ssti": "bright_red",
+    "auth-bypass": "bright_yellow",
+    "access-control": "bright_magenta",
+    "request-manipulation": "blue",
+    "file-based": "green",
+    "deserialization": "dark_orange",
+    "client-side": "bright_cyan",
+    "misc": "white",
+}
+
+
+# ── WebVulnTechnique: Rich output ──────────────────────────────────────────────
+
+def show_rich_web(
+    technique: WebVulnTechnique,
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    console = Console()
+    type_color = WEB_TYPE_COLORS.get(technique.vuln_type, "white")
+
+    console.print(
+        f"\n[bold bright_green]{technique.name}[/bold bright_green]"
+        f"  [dim]({technique.full_name})[/dim]\n"
+    )
+    console.print(
+        f"  type: [{type_color}]{technique.vuln_type}[/{type_color}]\n"
+    )
+
+    if technique.description:
+        console.print(Panel(technique.description, border_style="dim", padding=(0, 1)))
+        console.print()
+
+    if technique.payloads:
+        console.print(Rule("[bold yellow]PAYLOADS[/bold yellow]", style="dim yellow"))
+        for idx, p in enumerate(technique.payloads, 1):
+            console.print(f"  [bold white]\\[{idx}][/bold white] [italic]{p.context}[/italic]")
+            console.print(
+                Syntax(p.payload, "text", theme="monokai", word_wrap=True, indent_guides=False),
+                no_wrap=False,
+            )
+            if p.note:
+                console.print(f"  [dim]↳ {p.note}[/dim]")
+            console.print()
+
+    commands = technique.commands
+    if category_filter:
+        norm = category_filter.lower()
+        commands = [c for c in commands if norm in c.category]
+    if platform_filter and platform_filter != "both":
+        commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+    if commands:
+        by_cat: dict[str, list] = {}
+        for cmd in commands:
+            by_cat.setdefault(cmd.category, []).append(cmd)
+
+        idx = 1
+        ordered_cats = [c for c in CATEGORY_ORDER if c in by_cat]
+        ordered_cats += [c for c in by_cat if c not in CATEGORY_ORDER]
+
+        for cat in ordered_cats:
+            color = CATEGORY_COLORS.get(cat, "white")
+            console.print(Rule(f"[{color}]{_category_label(cat)}[/{color}]", style=f"dim {color}"))
+            for cmd in by_cat[cat]:
+                plat_color = PLATFORM_COLORS.get(cmd.platform, "dim")
+                plat_badge = f"[{plat_color}][{cmd.platform}][/{plat_color}]" if cmd.platform != "both" else ""
+                label = f"  [bold white]\\[{idx}][/bold white] [italic]{cmd.name}[/italic]"
+                if plat_badge:
+                    label += f"  {plat_badge}"
+                console.print(label)
+                console.print(
+                    Syntax(cmd.command, "bash", theme="monokai", word_wrap=True, indent_guides=False),
+                    no_wrap=False,
+                )
+                if cmd.note:
+                    console.print(f"  [dim]↳ {cmd.note}[/dim]")
+                console.print()
+                idx += 1
+
+    if technique.see_also:
+        slugs = "  ·  ".join(f"[cyan]{s}[/cyan]" for s in technique.see_also)
+        console.print(f"[dim]SEE ALSO:[/dim]  {slugs}\n")
+
+
+def show_rich_web_type(
+    vuln_type: str,
+    techniques: list[WebVulnTechnique],
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    console = Console()
+    type_color = WEB_TYPE_COLORS.get(vuln_type, "white")
+    console.print(
+        f"\n[bold {type_color}]{vuln_type.upper()}[/bold {type_color}]"
+        f"  [dim]({len(techniques)} techniques)[/dim]\n"
+    )
+
+    for tech in techniques:
+        console.print(Rule(f"[bold]{tech.name}[/bold]  [dim]({tech.slug})[/dim]", style=type_color))
+
+        if tech.description:
+            console.print(f"  [dim]{tech.description}[/dim]")
+            console.print()
+
+        if tech.payloads:
+            preview = tech.payloads[:3]
+            for p in preview:
+                console.print(f"  [dim italic]{p.context}[/dim italic]")
+                console.print(
+                    Syntax(p.payload, "text", theme="monokai", word_wrap=True, indent_guides=False),
+                    no_wrap=False,
+                )
+            if len(tech.payloads) > 3:
+                console.print(f"  [dim]… {len(tech.payloads) - 3} more payloads (hacktricks {tech.slug})[/dim]")
+            console.print()
+
+        commands = tech.commands
+        if category_filter:
+            norm = category_filter.lower()
+            commands = [c for c in commands if norm in c.category]
+        if platform_filter and platform_filter != "both":
+            commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+        if commands:
+            idx = 1
+            for cmd in commands[:3]:
+                plat_color = PLATFORM_COLORS.get(cmd.platform, "dim")
+                plat_badge = f"[{plat_color}][{cmd.platform}][/{plat_color}]" if cmd.platform != "both" else ""
+                label = f"  [bold white]\\[{idx}][/bold white] [italic]{cmd.name}[/italic]"
+                if plat_badge:
+                    label += f"  {plat_badge}"
+                console.print(label)
+                console.print(
+                    Syntax(cmd.command, "bash", theme="monokai", word_wrap=True, indent_guides=False),
+                    no_wrap=False,
+                )
+                if cmd.note:
+                    console.print(f"  [dim]↳ {cmd.note}[/dim]")
+                console.print()
+                idx += 1
+
+        if tech.see_also:
+            slugs = "  ·  ".join(f"[cyan]{s}[/cyan]" for s in tech.see_also)
+            console.print(f"  [dim]SEE ALSO:[/dim]  {slugs}\n")
+
+
+# ── WebVulnTechnique: Plain text output ───────────────────────────────────────
+
+def show_plain_web(
+    technique: WebVulnTechnique,
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    lines = [
+        f"{technique.name} ({technique.full_name})",
+        f"  type: {technique.vuln_type}",
+        "",
+    ]
+
+    if technique.description:
+        lines.append(technique.description)
+        lines.append("")
+
+    if technique.payloads:
+        lines.append("--- PAYLOADS ---")
+        for idx, p in enumerate(technique.payloads, 1):
+            lines.append(f"[{idx}] {p.context}")
+            lines.append(f"    {p.payload}")
+            if p.note:
+                lines.append(f"    -> {p.note}")
+            lines.append("")
+
+    commands = technique.commands
+    if category_filter:
+        norm = category_filter.lower()
+        commands = [c for c in commands if norm in c.category]
+    if platform_filter and platform_filter != "both":
+        commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+    by_cat: dict[str, list] = {}
+    for cmd in commands:
+        by_cat.setdefault(cmd.category, []).append(cmd)
+
+    idx = 1
+    ordered_cats = [c for c in CATEGORY_ORDER if c in by_cat]
+    ordered_cats += [c for c in by_cat if c not in CATEGORY_ORDER]
+
+    for cat in ordered_cats:
+        lines.append(f"--- {_category_label(cat)} ---")
+        for cmd in by_cat[cat]:
+            plat = f" [{cmd.platform}]" if cmd.platform != "both" else ""
+            lines.append(f"[{idx}] {cmd.name}{plat}")
+            for line in cmd.command.splitlines():
+                lines.append(f"    {line}")
+            if cmd.note:
+                lines.append(f"    -> {cmd.note}")
+            lines.append("")
+            idx += 1
+
+    if technique.see_also:
+        lines.append(f"SEE ALSO: {' | '.join(technique.see_also)}")
+        lines.append("")
+
+    print("\n".join(lines))
+
+
+def show_plain_web_type(
+    vuln_type: str,
+    techniques: list[WebVulnTechnique],
+    category_filter: Optional[str] = None,
+    platform_filter: Optional[str] = None,
+):
+    print(f"{vuln_type.upper()} ({len(techniques)} techniques)\n")
+    for tech in techniques:
+        print(f"=== {tech.name} ({tech.slug}) ===")
+        if tech.description:
+            print(tech.description)
+            print()
+
+        if tech.payloads:
+            for idx, p in enumerate(tech.payloads[:3], 1):
+                print(f"[{idx}] {p.context}")
+                print(f"    {p.payload}")
+                if p.note:
+                    print(f"    -> {p.note}")
+                print()
+            if len(tech.payloads) > 3:
+                print(f"  ... {len(tech.payloads) - 3} more payloads (hacktricks {tech.slug})\n")
+
+        commands = tech.commands
+        if category_filter:
+            norm = category_filter.lower()
+            commands = [c for c in commands if norm in c.category]
+        if platform_filter and platform_filter != "both":
+            commands = [c for c in commands if c.platform in (platform_filter, "both")]
+
+        idx = 1
+        for cmd in commands[:3]:
+            plat = f" [{cmd.platform}]" if cmd.platform != "both" else ""
+            print(f"[{idx}] {cmd.name}{plat}")
+            for line in cmd.command.splitlines():
+                print(f"    {line}")
+            if cmd.note:
+                print(f"    -> {cmd.note}")
+            print()
+            idx += 1
+
+        if tech.see_also:
+            print(f"SEE ALSO: {' | '.join(tech.see_also)}\n")
+
+
+# ── WebVulnTechnique: JSON output ──────────────────────────────────────────────
+
+def show_json_web(technique: WebVulnTechnique):
+    out = {
+        "slug": technique.slug,
+        "name": technique.name,
+        "full_name": technique.full_name,
+        "description": technique.description,
+        "vuln_type": technique.vuln_type,
+        "payloads": [
+            {"context": p.context, "payload": p.payload, "note": p.note}
+            for p in technique.payloads
+        ],
+        "commands": [
+            {
+                "name": c.name,
+                "platform": c.platform,
+                "category": c.category,
+                "command": c.command,
+                "note": c.note,
+            }
+            for c in technique.commands
+        ],
+        "aliases": technique.aliases,
+        "see_also": technique.see_also,
+    }
+    print(json.dumps(out, indent=2))
+
+
+def show_json_web_type(vuln_type: str, techniques: list[WebVulnTechnique]):
+    out = {
+        "vuln_type": vuln_type,
+        "techniques": [
+            {
+                "slug": t.slug,
+                "name": t.name,
+                "full_name": t.full_name,
+                "description": t.description,
+                "payloads": [
+                    {"context": p.context, "payload": p.payload, "note": p.note}
+                    for p in t.payloads
+                ],
+                "commands": [
+                    {"name": c.name, "platform": c.platform, "category": c.category,
+                     "command": c.command, "note": c.note}
+                    for c in t.commands
+                ],
+                "aliases": t.aliases,
+                "see_also": t.see_also,
+            }
+            for t in techniques
+        ],
+    }
+    print(json.dumps(out, indent=2))
+
+
+# ── WebVulnTechnique: List output ──────────────────────────────────────────────
+
+def show_list_rich_web(techniques: list[WebVulnTechnique]):
+    from rich.table import Table
+    console = Console()
+    table = Table(title="Web Vulnerability Techniques", show_header=True, header_style="bold bright_green")
+    table.add_column("Slug", style="bold")
+    table.add_column("Name")
+    table.add_column("Type", style="cyan")
+    table.add_column("Payloads", justify="right", style="yellow")
+    table.add_column("Cmds", justify="right", style="dim")
+
+    for t in techniques:
+        type_color = WEB_TYPE_COLORS.get(t.vuln_type, "white")
+        table.add_row(
+            t.slug, t.name,
+            f"[{type_color}]{t.vuln_type}[/{type_color}]",
+            str(len(t.payloads)),
+            str(len(t.commands)),
+        )
+
+    console.print(table)
+
+
+def show_list_plain_web(techniques: list[WebVulnTechnique]):
+    for t in techniques:
+        print(f"{t.slug:<45} {t.vuln_type:<20} payloads:{len(t.payloads):<4} {t.name}")
