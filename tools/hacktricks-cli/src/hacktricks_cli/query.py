@@ -8,6 +8,23 @@ from typing import Optional
 
 
 @dataclass
+class GTFOFunction:
+    func_type: str
+    code: str
+    comment: str = ""
+    contexts: list[str] = field(default_factory=list)
+    context_overrides: dict = field(default_factory=dict)
+    extras: dict = field(default_factory=dict)
+
+
+@dataclass
+class GTFOBin:
+    name: str
+    comment: str = ""
+    functions: dict[str, list[GTFOFunction]] = field(default_factory=dict)
+
+
+@dataclass
 class Command:
     name: str
     category: str
@@ -621,6 +638,147 @@ def web_index_counts() -> dict[str, int]:
     return {vtype: len(slugs) for vtype, slugs in type_index.items()}
 
 
+# ── GTFOBins queries ───────────────────────────────────────────────────────────
+
+GTFO_FUNCTION_TYPES = [
+    "shell",
+    "reverse-shell",
+    "bind-shell",
+    "file-read",
+    "file-write",
+    "download",
+    "upload",
+    "command",
+    "privilege-escalation",
+    "library-load",
+    "inherit",
+]
+
+GTFO_CONTEXT_TYPES = ["sudo", "suid", "unprivileged", "capabilities"]
+
+_GTFO_FUNC_ALIASES: dict[str, str] = {
+    "revshell": "reverse-shell",
+    "rev-shell": "reverse-shell",
+    "rev shell": "reverse-shell",
+    "bindshell": "bind-shell",
+    "bind shell": "bind-shell",
+    "read": "file-read",
+    "write": "file-write",
+    "fileread": "file-read",
+    "filewrite": "file-write",
+    "file read": "file-read",
+    "file write": "file-write",
+    "privesc": "privilege-escalation",
+    "priv-esc": "privilege-escalation",
+    "priv esc": "privilege-escalation",
+    "lpe": "privilege-escalation",
+    "libload": "library-load",
+    "lib-load": "library-load",
+    "lib load": "library-load",
+    "cmd": "command",
+    "exec": "command",
+    "dl": "download",
+    "ul": "upload",
+}
+
+_GTFO_CTX_ALIASES: dict[str, str] = {
+    "unpriv": "unprivileged",
+    "cap": "capabilities",
+    "caps": "capabilities",
+    "setuid": "suid",
+}
+
+
+def _resolve_gtfo_func(name: str) -> Optional[str]:
+    n = name.lower().strip()
+    if n in GTFO_FUNCTION_TYPES:
+        return n
+    return _GTFO_FUNC_ALIASES.get(n)
+
+
+def _resolve_gtfo_ctx(name: str) -> Optional[str]:
+    n = name.lower().strip()
+    if n in GTFO_CONTEXT_TYPES:
+        return n
+    return _GTFO_CTX_ALIASES.get(n)
+
+
+@lru_cache(maxsize=1)
+def _load_gtfobins_index() -> dict:
+    pkg = importlib.resources.files("hacktricks_cli")
+    data_file = pkg / "data" / "gtfobins.json"
+    try:
+        return json.loads(data_file.read_text())
+    except Exception:
+        return {"binaries": {}, "function_index": {}, "context_index": {}}
+
+
+def _parse_gtfobin(name: str, raw: dict) -> GTFOBin:
+    functions: dict[str, list[GTFOFunction]] = {}
+    for func_type, entries in raw.get("functions", {}).items():
+        parsed = []
+        for e in entries:
+            parsed.append(GTFOFunction(
+                func_type=func_type,
+                code=e.get("code", ""),
+                comment=e.get("comment", ""),
+                contexts=e.get("contexts", []),
+                context_overrides=e.get("context_overrides", {}),
+                extras={k: v for k, v in e.items()
+                        if k not in ("code", "comment", "contexts", "context_overrides")},
+            ))
+        if parsed:
+            functions[func_type] = parsed
+    return GTFOBin(
+        name=name,
+        comment=raw.get("comment", ""),
+        functions=functions,
+    )
+
+
+def query_gtfobin(name: str) -> Optional[GTFOBin]:
+    index = _load_gtfobins_index()
+    binaries = index.get("binaries", {})
+    n = name.lower().strip()
+    if n in binaries:
+        return _parse_gtfobin(n, binaries[n])
+    close = difflib.get_close_matches(n, list(binaries.keys()), n=1, cutoff=0.7)
+    if close:
+        return _parse_gtfobin(close[0], binaries[close[0]])
+    return None
+
+
+def query_gtfo_func(func_type: str) -> list[GTFOBin]:
+    index = _load_gtfobins_index()
+    names = index.get("function_index", {}).get(func_type, [])
+    binaries = index.get("binaries", {})
+    return [_parse_gtfobin(n, binaries[n]) for n in names if n in binaries]
+
+
+def query_gtfo_ctx(context: str) -> list[GTFOBin]:
+    index = _load_gtfobins_index()
+    names = index.get("context_index", {}).get(context, [])
+    binaries = index.get("binaries", {})
+    return [_parse_gtfobin(n, binaries[n]) for n in names if n in binaries]
+
+
+def list_all_gtfo() -> list[GTFOBin]:
+    index = _load_gtfobins_index()
+    return [
+        _parse_gtfobin(name, raw)
+        for name, raw in sorted(index.get("binaries", {}).items())
+    ]
+
+
+def gtfobins_index_counts() -> dict:
+    index = _load_gtfobins_index()
+    return {
+        "total": len(index.get("binaries", {})),
+        "by_function": {k: len(v) for k, v in index.get("function_index", {}).items()},
+        "by_context": {k: len(v) for k, v in index.get("context_index", {}).items()},
+    }
+
+
 # ── Cross-index suggestions ────────────────────────────────────────────────────
 
 def suggest(query: str, n: int = 3) -> list[tuple[str, str]]:
@@ -631,12 +789,14 @@ def suggest(query: str, n: int = 3) -> list[tuple[str, str]]:
     name_lower = query.lower()
     name_norm = _normalize(query)
 
+    gtfo_candidates = {name: [name] for name in _load_gtfobins_index().get("binaries", {})}
     pools: list[tuple[dict[str, list[str]], dict, str, callable]] = [
         (_service_candidates(_load_index()),   _load_index()["services"],          "service",    lambda s, r: r.get("name", s)),
         (_technique_candidates(_load_ad_index()), _load_ad_index()["techniques"],  "ad",         lambda s, r: r.get("name", s)),
         (_postex_candidates(_load_postex_index()), _load_postex_index()["techniques"], "postex", lambda s, r: r.get("name", s)),
         (_privesc_candidates(_load_privesc_index()), _load_privesc_index()["techniques"], "privesc", lambda s, r: r.get("name", s)),
         (_web_candidates(_load_web_index()),   _load_web_index()["techniques"],     "web",        lambda s, r: r.get("name", s)),
+        (gtfo_candidates, _load_gtfobins_index().get("binaries", {}),              "gtfo",       lambda s, r: s),
     ]
 
     scored: list[tuple[float, str, str]] = []

@@ -7,26 +7,32 @@ from .display import (
     show_json_postex, show_json_postex_topic,
     show_json_privesc, show_json_privesc_platform,
     show_json_web, show_json_web_type,
+    show_json_gtfobin, show_json_gtfo_func,
     show_list_plain, show_list_plain_techniques, show_list_plain_postex, show_list_plain_privesc,
-    show_list_plain_web,
+    show_list_plain_web, show_list_plain_gtfo,
     show_list_rich, show_list_rich_techniques, show_list_rich_postex, show_list_rich_privesc,
-    show_list_rich_web,
+    show_list_rich_web, show_list_rich_gtfo,
     show_plain, show_plain_technique,
     show_plain_postex, show_plain_postex_topic,
     show_plain_privesc, show_plain_privesc_platform,
     show_plain_web, show_plain_web_type,
+    show_plain_gtfobin, show_plain_gtfo_func,
     show_rich, show_rich_technique,
     show_rich_postex, show_rich_postex_topic,
     show_rich_privesc, show_rich_privesc_platform,
     show_rich_web, show_rich_web_type,
+    show_rich_gtfobin, show_rich_gtfo_func,
 )
 from .query import (
     index_meta, list_all, list_all_techniques, list_all_postex, list_all_privesc, list_all_web,
-    postex_index_counts, privesc_index_counts, web_index_counts,
+    list_all_gtfo,
+    postex_index_counts, privesc_index_counts, web_index_counts, gtfobins_index_counts,
     query_port, query_service, query_technique,
     query_postex, query_postex_topic, _resolve_topic, POSTEX_TOPICS,
     query_privesc, query_privesc_platform, _resolve_privesc_platform, PRIVESC_PLATFORMS,
     query_web, query_web_type, _resolve_web_type, WEB_VULN_TYPES,
+    query_gtfobin, query_gtfo_func, query_gtfo_ctx,
+    _resolve_gtfo_func, _resolve_gtfo_ctx, GTFO_FUNCTION_TYPES, GTFO_CONTEXT_TYPES,
     suggest,
 )
 
@@ -42,13 +48,19 @@ from .query import (
               help="Search privilege escalation techniques only (linux, windows).")
 @click.option("--web", "web_only", is_flag=True,
               help="Search web vulnerability techniques only (sqli, xss, ssrf, ssti, etc.).")
+@click.option("--gtfo", "gtfo_only", is_flag=True,
+              help="Search GTFOBins (binaries for living-off-the-land / privilege escalation).")
+@click.option("--func", "gtfo_func", metavar="TYPE", default=None,
+              help=f"Filter GTFOBins by function type ({', '.join(GTFO_FUNCTION_TYPES)}).")
+@click.option("--ctx", "gtfo_ctx", metavar="CTX", default=None,
+              help=f"Filter GTFOBins by context ({', '.join(GTFO_CONTEXT_TYPES)}).")
 @click.option("--platform", "-P", type=click.Choice(["linux", "windows", "both"]), default=None,
               help="Filter commands by platform (linux, windows, both).")
 @click.option("--list", "show_list", is_flag=True, help="List all known entries.")
 @click.option("--plain", is_flag=True, help="Plain text output (no color).")
 @click.option("--json", "json_out", is_flag=True, help="JSON output for scripting.")
 @click.option("--info", is_flag=True, help="Show index metadata (version, source commit).")
-def main(query, category, ad_only, postex_only, privesc_only, web_only, platform, show_list, plain, json_out, info):
+def main(query, category, ad_only, postex_only, privesc_only, web_only, gtfo_only, gtfo_func, gtfo_ctx, platform, show_list, plain, json_out, info):
     """
     HackTricks reference tool. Query by port, service name, AD or post-exploitation technique.
 
@@ -73,6 +85,12 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
       hacktricks xss               # XSS payload cheatsheet
       hacktricks --web injection   # all injection-type web vulns
       hacktricks --list --web      # all web vulnerability techniques
+      hacktricks --gtfo curl       # GTFOBins entry for curl
+      hacktricks --gtfo python     # GTFOBins entry for python
+      hacktricks --gtfo shell      # all binaries with shell escape
+      hacktricks --gtfo --func file-read          # all binaries with file-read
+      hacktricks --gtfo --func shell --ctx suid   # shell via SUID
+      hacktricks --list --gtfo     # list all GTFOBins binaries
     """
     query = " ".join(query) if query else None
     if info:
@@ -80,6 +98,7 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
         meta["postex_topic_counts"] = postex_index_counts()
         meta["privesc_platform_counts"] = privesc_index_counts()
         meta["web_type_counts"] = web_index_counts()
+        meta["gtfobins_counts"] = gtfobins_index_counts()
         if json_out:
             import json
             print(json.dumps(meta, indent=2))
@@ -87,12 +106,32 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
             for k, v in meta.items():
                 if isinstance(v, dict):
                     for kk, vv in v.items():
-                        print(f"  {kk}: {vv}")
+                        if isinstance(vv, dict):
+                            print(f"  {kk}:")
+                            for kkk, vvv in vv.items():
+                                print(f"    {kkk}: {vvv}")
+                        else:
+                            print(f"  {kk}: {vv}")
                 else:
                     print(f"{k}: {v}")
         return
 
     if show_list:
+        if gtfo_only:
+            binaries = list_all_gtfo()
+            if json_out:
+                import json
+                print(json.dumps([
+                    {"name": b.name, "functions": list(b.functions.keys()),
+                     "contexts": sorted({ctx for entries in b.functions.values()
+                                         for e in entries for ctx in e.contexts})}
+                    for b in binaries
+                ], indent=2))
+            elif plain:
+                show_list_plain_gtfo(binaries)
+            else:
+                show_list_rich_gtfo(binaries)
+            return
         if web_only:
             techniques = list_all_web()
             if json_out:
@@ -160,7 +199,7 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
                 show_list_rich(services)
         return
 
-    if not query:
+    if not query and not gtfo_only:
         click.echo(click.get_current_context().get_help())
         return
 
@@ -259,6 +298,72 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
                 show_rich_web(wt, category, platform)
         return
 
+    # GTFOBins-only mode
+    if gtfo_only:
+        resolved_func = _resolve_gtfo_func(gtfo_func) if gtfo_func else None
+        resolved_ctx = _resolve_gtfo_ctx(gtfo_ctx) if gtfo_ctx else None
+
+        # --func without a query: list all binaries with that function type
+        if resolved_func and not query:
+            binaries = query_gtfo_func(resolved_func)
+            if not binaries:
+                click.echo(f"No GTFOBins entries found for function type '{resolved_func}'.", err=True)
+                sys.exit(1)
+            if json_out:
+                show_json_gtfo_func(resolved_func, binaries)
+            elif plain:
+                show_plain_gtfo_func(resolved_func, binaries, resolved_ctx)
+            else:
+                show_rich_gtfo_func(resolved_func, binaries, resolved_ctx)
+            return
+
+        # query might be a function type (e.g. "hacktricks --gtfo shell")
+        func_from_query = _resolve_gtfo_func(query) if query else None
+        if func_from_query and not resolved_func:
+            binaries = query_gtfo_func(func_from_query)
+            if not binaries:
+                click.echo(f"No GTFOBins entries found for function type '{func_from_query}'.", err=True)
+                sys.exit(1)
+            if json_out:
+                show_json_gtfo_func(func_from_query, binaries)
+            elif plain:
+                show_plain_gtfo_func(func_from_query, binaries, resolved_ctx)
+            else:
+                show_rich_gtfo_func(func_from_query, binaries, resolved_ctx)
+            return
+
+        # query might be a context (e.g. "hacktricks --gtfo suid")
+        ctx_from_query = _resolve_gtfo_ctx(query) if query else None
+        if ctx_from_query and not resolved_ctx and not resolved_func:
+            binaries = query_gtfo_ctx(ctx_from_query)
+            if not binaries:
+                click.echo(f"No GTFOBins entries found for context '{ctx_from_query}'.", err=True)
+                sys.exit(1)
+            if json_out:
+                show_json_gtfo_func(f"[ctx:{ctx_from_query}]", binaries)
+            elif plain:
+                show_list_plain_gtfo(binaries)
+            else:
+                show_list_rich_gtfo(binaries)
+            return
+
+        # Lookup a specific binary
+        if not query:
+            click.echo(click.get_current_context().get_help())
+            return
+
+        binary = query_gtfobin(query)
+        if binary is None:
+            click.echo(f"No GTFOBins entry found for '{query}'.", err=True)
+            sys.exit(1)
+        if json_out:
+            show_json_gtfobin(binary)
+        elif plain:
+            show_plain_gtfobin(binary, resolved_func, resolved_ctx)
+        else:
+            show_rich_gtfobin(binary, resolved_func, resolved_ctx)
+        return
+
     # Port lookup → services only
     if query.isdigit():
         services = query_port(int(query))
@@ -307,6 +412,7 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
     pt = query_postex(query)
     pv = query_privesc(query)
     wt = query_web(query)
+    gtfo = query_gtfobin(query)
 
     def _is_exact_service(s):
         return s.slug == q or s.name.lower() == q or q in [a.lower() for a in s.aliases]
@@ -328,27 +434,33 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
     exact_pt = pt is not None and _is_exact_postex(pt)
     exact_pv = pv is not None and _is_exact_privesc(pv)
     exact_wt = wt is not None and _is_exact_web(wt)
+    exact_gtfo = gtfo is not None and gtfo.name == q
 
     # Priority: exact service > exact privesc > exact AD > exact web > exact postex >
-    #           fuzzy service > fuzzy privesc > fuzzy web > fuzzy postex > fuzzy AD
+    #           exact gtfo > fuzzy service > fuzzy privesc > fuzzy web > fuzzy postex >
+    #           fuzzy gtfo > fuzzy AD
     if exact_svc:
         pass  # svc wins
     elif exact_pv:
-        svc = None; technique = None; pt = None; wt = None
+        svc = None; technique = None; pt = None; wt = None; gtfo = None
     elif exact_ad and not exact_pt and not exact_wt:
-        svc = None; pt = None; pv = None; wt = None
+        svc = None; pt = None; pv = None; wt = None; gtfo = None
     elif exact_wt:
-        svc = None; technique = None; pt = None; pv = None
+        svc = None; technique = None; pt = None; pv = None; gtfo = None
     elif exact_pt:
-        svc = None; technique = None; pv = None; wt = None
+        svc = None; technique = None; pv = None; wt = None; gtfo = None
+    elif exact_gtfo:
+        svc = None; technique = None; pt = None; pv = None; wt = None
     elif svc is not None:
-        technique = None; pt = None; pv = None; wt = None  # fuzzy service
+        technique = None; pt = None; pv = None; wt = None; gtfo = None  # fuzzy service
     elif pv is not None:
-        technique = None; pt = None; wt = None  # fuzzy privesc
+        technique = None; pt = None; wt = None; gtfo = None  # fuzzy privesc
     elif wt is not None:
-        technique = None; pt = None  # fuzzy web beats fuzzy postex/AD
+        technique = None; pt = None; gtfo = None  # fuzzy web beats fuzzy postex/AD/gtfo
     elif pt is not None:
-        technique = None  # fuzzy postex beats fuzzy AD (tool names)
+        technique = None; gtfo = None  # fuzzy postex beats fuzzy AD/gtfo (tool names)
+    elif gtfo is not None:
+        technique = None  # fuzzy gtfo beats fuzzy AD
     # else technique (fuzzy AD) is last resort
 
     if svc is not None:
@@ -394,6 +506,15 @@ def main(query, category, ad_only, postex_only, privesc_only, web_only, platform
             show_plain_postex(pt, category, platform)
         else:
             show_rich_postex(pt, category, platform)
+        return
+
+    if gtfo is not None:
+        if json_out:
+            show_json_gtfobin(gtfo)
+        elif plain:
+            show_plain_gtfobin(gtfo)
+        else:
+            show_rich_gtfobin(gtfo)
         return
 
     hints = suggest(query)

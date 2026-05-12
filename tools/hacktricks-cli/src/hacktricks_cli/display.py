@@ -8,7 +8,7 @@ from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.text import Text
 
-from .query import PostexTechnique, PrivescTechnique, Service, Technique, WebVulnTechnique
+from .query import GTFOBin, GTFOFunction, PostexTechnique, PrivescTechnique, Service, Technique, WebVulnTechnique
 
 CATEGORY_ORDER = [
     "enumeration",
@@ -1331,3 +1331,248 @@ def show_list_rich_web(techniques: list[WebVulnTechnique]):
 def show_list_plain_web(techniques: list[WebVulnTechnique]):
     for t in techniques:
         print(f"{t.slug:<45} {t.vuln_type:<20} payloads:{len(t.payloads):<4} {t.name}")
+
+
+# ── GTFOBins display ───────────────────────────────────────────────────────────
+
+GTFO_FUNC_COLORS = {
+    "shell": "bright_red",
+    "reverse-shell": "red",
+    "bind-shell": "dark_orange",
+    "file-read": "cyan",
+    "file-write": "yellow",
+    "download": "blue",
+    "upload": "bright_blue",
+    "command": "magenta",
+    "privilege-escalation": "bright_red",
+    "library-load": "orange3",
+    "inherit": "dim",
+}
+
+GTFO_CTX_COLORS = {
+    "sudo": "bright_red",
+    "suid": "yellow",
+    "unprivileged": "green",
+    "capabilities": "magenta",
+}
+
+GTFO_FUNC_ORDER = [
+    "shell", "reverse-shell", "bind-shell",
+    "privilege-escalation", "command",
+    "file-read", "file-write",
+    "download", "upload",
+    "library-load", "inherit",
+]
+
+
+def _gtfo_func_label(func_type: str) -> str:
+    return func_type.upper().replace("-", " ")
+
+
+def _gtfo_ctx_badges(contexts: list[str], plain: bool = False) -> str:
+    if plain:
+        return " ".join(f"[{c}]" for c in contexts)
+    parts = []
+    for ctx in contexts:
+        color = GTFO_CTX_COLORS.get(ctx, "white")
+        parts.append(f"[{color}][{ctx}][/{color}]")
+    return " ".join(parts)
+
+
+def show_rich_gtfobin(binary: GTFOBin, filter_func: Optional[str] = None, filter_ctx: Optional[str] = None):
+    console = Console()
+    func_count = sum(len(v) for v in binary.functions.values())
+    func_types = sorted(binary.functions.keys(), key=lambda x: GTFO_FUNC_ORDER.index(x) if x in GTFO_FUNC_ORDER else 99)
+
+    badges = "  ".join(
+        f"[{GTFO_FUNC_COLORS.get(ft, 'white')}]{_gtfo_func_label(ft)}[/{GTFO_FUNC_COLORS.get(ft, 'white')}]"
+        for ft in func_types
+    )
+    console.print(f"\n[bold bright_green]{binary.name}[/bold bright_green]  {badges}\n")
+    if binary.comment:
+        console.print(f"  [dim]{binary.comment.strip()}[/dim]\n")
+
+    for func_type in func_types:
+        if filter_func and func_type != filter_func:
+            continue
+        entries = binary.functions[func_type]
+        color = GTFO_FUNC_COLORS.get(func_type, "white")
+        console.print(Rule(f"[{color}]{_gtfo_func_label(func_type)}[/{color}]", style=color))
+
+        for i, entry in enumerate(entries, 1):
+            ctx_list = entry.contexts
+            if filter_ctx and filter_ctx not in ctx_list:
+                continue
+
+            badges_str = _gtfo_ctx_badges(ctx_list)
+            if entry.comment:
+                console.print(f"  [dim]{entry.comment.strip()}[/dim]")
+            console.print(f"  {badges_str}")
+            console.print(Syntax(entry.code, "bash", theme="monokai", word_wrap=True))
+
+            # Show context-specific overrides
+            for ctx, override in entry.context_overrides.items():
+                if filter_ctx and ctx != filter_ctx:
+                    continue
+                ctx_color = GTFO_CTX_COLORS.get(ctx, "white")
+                if override.get("comment"):
+                    console.print(f"  [{ctx_color}]{ctx}[/{ctx_color}]: [dim]{override['comment'].strip()}[/dim]")
+                if override.get("code"):
+                    console.print(f"  [{ctx_color}]↳ {ctx}[/{ctx_color}]")
+                    console.print(Syntax(override["code"], "bash", theme="monokai", word_wrap=True))
+
+            for extra_key in ("sender", "receiver", "listener"):
+                if extra_key in entry.extras:
+                    console.print(f"  [dim]{extra_key}: {entry.extras[extra_key]}[/dim]")
+
+            if i < len(entries):
+                console.print()
+
+    console.print()
+
+
+def show_plain_gtfobin(binary: GTFOBin, filter_func: Optional[str] = None, filter_ctx: Optional[str] = None):
+    func_types = sorted(binary.functions.keys(), key=lambda x: GTFO_FUNC_ORDER.index(x) if x in GTFO_FUNC_ORDER else 99)
+    print(f"\n{binary.name}")
+    if binary.comment:
+        print(f"  {binary.comment.strip()}")
+    print()
+    for func_type in func_types:
+        if filter_func and func_type != filter_func:
+            continue
+        entries = binary.functions[func_type]
+        print(f"── {_gtfo_func_label(func_type)} ──")
+        for entry in entries:
+            if filter_ctx and filter_ctx not in entry.contexts:
+                continue
+            ctx_str = _gtfo_ctx_badges(entry.contexts, plain=True)
+            if entry.comment:
+                print(f"  # {entry.comment.strip()}")
+            print(f"  {ctx_str}")
+            for line in entry.code.splitlines():
+                print(f"  {line}")
+            for ctx, override in entry.context_overrides.items():
+                if filter_ctx and ctx != filter_ctx:
+                    continue
+                if override.get("comment"):
+                    print(f"  [{ctx}] {override['comment'].strip()}")
+                if override.get("code"):
+                    print(f"  [{ctx}]:")
+                    for line in override["code"].splitlines():
+                        print(f"    {line}")
+            print()
+
+
+def show_json_gtfobin(binary: GTFOBin):
+    data = {
+        "name": binary.name,
+        "comment": binary.comment,
+        "functions": {
+            func_type: [
+                {
+                    "code": e.code,
+                    "comment": e.comment,
+                    "contexts": e.contexts,
+                    **({"context_overrides": e.context_overrides} if e.context_overrides else {}),
+                    **e.extras,
+                }
+                for e in entries
+            ]
+            for func_type, entries in binary.functions.items()
+        },
+    }
+    print(json.dumps(data, indent=2))
+
+
+def show_rich_gtfo_func(func_type: str, binaries: list[GTFOBin], filter_ctx: Optional[str] = None):
+    console = Console()
+    color = GTFO_FUNC_COLORS.get(func_type, "white")
+    label = _gtfo_func_label(func_type)
+    matching = [b for b in binaries if any(
+        not filter_ctx or filter_ctx in e.contexts
+        for e in b.functions.get(func_type, [])
+    )]
+    ctx_note = f" via {filter_ctx}" if filter_ctx else ""
+    console.print(f"\n[bold {color}]{label}[/bold {color}]{ctx_note}  [dim]({len(matching)} binaries)[/dim]\n")
+
+    for binary in binaries:
+        entries = binary.functions.get(func_type, [])
+        if not entries:
+            continue
+        filtered = [e for e in entries if not filter_ctx or filter_ctx in e.contexts]
+        if not filtered:
+            continue
+        ctx_types = sorted({ctx for e in filtered for ctx in e.contexts})
+        badges = _gtfo_ctx_badges(ctx_types)
+        console.print(f"  [bold]{binary.name}[/bold]  {badges}")
+        for entry in filtered:
+            console.print(Syntax(entry.code, "bash", theme="monokai", word_wrap=True))
+        console.print()
+
+
+def show_plain_gtfo_func(func_type: str, binaries: list[GTFOBin], filter_ctx: Optional[str] = None):
+    label = _gtfo_func_label(func_type)
+    print(f"\n{label} ({len(binaries)} binaries)\n")
+    for binary in binaries:
+        entries = binary.functions.get(func_type, [])
+        filtered = [e for e in entries if not filter_ctx or filter_ctx in e.contexts]
+        if not filtered:
+            continue
+        print(f"  {binary.name}")
+        for entry in filtered:
+            ctx_str = _gtfo_ctx_badges(entry.contexts, plain=True)
+            print(f"    {ctx_str}")
+            for line in entry.code.splitlines():
+                print(f"    {line}")
+        print()
+
+
+def show_json_gtfo_func(func_type: str, binaries: list[GTFOBin]):
+    data = {
+        "function_type": func_type,
+        "count": len(binaries),
+        "binaries": [
+            {
+                "name": b.name,
+                "entries": [
+                    {"code": e.code, "comment": e.comment, "contexts": e.contexts}
+                    for e in b.functions.get(func_type, [])
+                ],
+            }
+            for b in binaries
+        ],
+    }
+    print(json.dumps(data, indent=2))
+
+
+def show_list_rich_gtfo(binaries: list[GTFOBin]):
+    from rich.table import Table
+    console = Console()
+    table = Table(show_header=True, header_style="bold", pad_edge=False)
+    table.add_column("Binary", style="bold bright_green", no_wrap=True)
+    table.add_column("Capabilities")
+    table.add_column("Contexts")
+
+    for b in binaries:
+        func_types = sorted(b.functions.keys(), key=lambda x: GTFO_FUNC_ORDER.index(x) if x in GTFO_FUNC_ORDER else 99)
+        caps = "  ".join(
+            f"[{GTFO_FUNC_COLORS.get(ft, 'white')}]{ft}[/{GTFO_FUNC_COLORS.get(ft, 'white')}]"
+            for ft in func_types
+        )
+        all_ctx = sorted({ctx for entries in b.functions.values() for e in entries for ctx in e.contexts})
+        ctxs = " ".join(
+            f"[{GTFO_CTX_COLORS.get(c, 'white')}]{c}[/{GTFO_CTX_COLORS.get(c, 'white')}]"
+            for c in all_ctx
+        )
+        table.add_row(b.name, caps, ctxs)
+
+    console.print(table)
+
+
+def show_list_plain_gtfo(binaries: list[GTFOBin]):
+    for b in binaries:
+        func_types = sorted(b.functions.keys())
+        caps = " ".join(func_types)
+        all_ctx = sorted({ctx for entries in b.functions.values() for e in entries for ctx in e.contexts})
+        ctxs = " ".join(f"[{c}]" for c in all_ctx)
+        print(f"{b.name:<30} {caps:<60} {ctxs}")

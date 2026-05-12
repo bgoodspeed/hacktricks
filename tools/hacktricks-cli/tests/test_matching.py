@@ -322,7 +322,7 @@ class TestSuggest:
         assert all(isinstance(name, str) and isinstance(kind, str) for name, kind in results)
 
     def test_valid_kinds(self):
-        valid_kinds = {"service", "ad", "postex", "privesc", "web"}
+        valid_kinds = {"service", "ad", "postex", "privesc", "web", "gtfo"}
         for _, kind in suggest("smb", n=5):
             assert kind in valid_kinds
 
